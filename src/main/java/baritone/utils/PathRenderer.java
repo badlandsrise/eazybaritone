@@ -18,6 +18,7 @@
 package baritone.utils;
 
 import baritone.api.BaritoneAPI;
+import baritone.api.event.events.RenderBlockEntitiesEvent;
 import baritone.api.event.events.RenderEvent;
 import baritone.api.pathing.goals.*;
 import baritone.api.utils.BetterBlockPos;
@@ -27,6 +28,7 @@ import baritone.behavior.PathingBehavior;
 import baritone.pathing.path.PathExecutor;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.renderer.blockentity.BeaconRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -37,6 +39,7 @@ import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
+import javax.annotation.Nonnull;
 import java.awt.*;
 import java.util.Arrays;
 import java.util.Collection;
@@ -263,16 +266,6 @@ public final class PathRenderer implements IRenderer {
             minY = ctx.world().getMinY();
             maxY = ctx.world().getMaxY();
 
-            if (settings.renderGoalXZBeacon.value) {
-                // todo: fix beacon renderer (has been broken since at least 1.20.4)
-                //  issue with outer beam rendering, probably related to matrix transforms state not matching vanilla
-                //  possible solutions:
-                //      inject hook into LevelRenderer#renderBlockEntities where the matrices have already been set up correctly
-                //      copy out and modify the vanilla beacon render code
-                //  also another issue on 1.21.5 is we don't have a simple method call for editing the beacon's depth test
-//                return;
-            }
-
             minX = goalPos.getX() + 0.002 - renderPosX;
             maxX = goalPos.getX() + 1 - 0.002 - renderPosX;
             minZ = goalPos.getZ() + 0.002 - renderPosZ;
@@ -340,5 +333,31 @@ public final class PathRenderer implements IRenderer {
             IRenderer.emitLine(bufferBuilder, stack, maxX, y, maxZ, minX, y, maxZ, -1.0, 0.0, 0.0, lineWidth);
             IRenderer.emitLine(bufferBuilder, stack, minX, y, maxZ, minX, y, minZ, 0.0, 0.0, -1.0, lineWidth);
         }
+    }
+
+    public static void renderBeaconForGoal(RenderBlockEntitiesEvent event, @Nonnull PathingBehavior behavior) {
+        final IPlayerContext ctx = behavior.ctx;
+        if (ctx.world() == null || !settings.renderGoal.value || !settings.renderGoalXZBeacon.value) {
+            return;
+        }
+        final Goal goal = behavior.getGoal();
+        if (!(goal instanceof GoalXZ goalPos)) {
+            return;
+        }
+        final DimensionType thisPlayerDimension = ctx.world().dimensionType();
+        final DimensionType currentRenderViewDimension = BaritoneAPI.getProvider().getPrimaryBaritone().getPlayerContext().world().dimensionType();
+        if (thisPlayerDimension != currentRenderViewDimension) {
+            return;
+        }
+        double minY = ctx.world().getMinY();
+        double maxY = ctx.world().getMaxY();
+        int beamHeight = (int) (maxY - minY);
+        float gameTime = (float) ctx.world().getGameTime() + event.getPartialTicks();
+        PoseStack stack = event.getPoseStack();
+        double camX = posX(), camY = posY(), camZ = posZ();
+        stack.pushPose();
+        stack.translate(goalPos.getX() - camX, minY - camY, goalPos.getZ() - camZ);
+        IRenderer.submitBeaconBeam(stack, event.getCollector(), BeaconRenderer.BEAM_LOCATION, 1.0f, gameTime, 0, beamHeight, settings.colorGoalBox.value.getRGB(), .2f, .25f);
+        stack.popPose();
     }
 }

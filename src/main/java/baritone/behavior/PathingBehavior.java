@@ -580,4 +580,9 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     public void onRenderPass(RenderEvent event) {
         PathRenderer.render(event, this);
     }
+
+    @Override
+    public void onRenderBlockEntities(RenderBlockEntitiesEvent event) {
+        PathRenderer.renderBeaconForGoal(event, this);
+    }
 }
