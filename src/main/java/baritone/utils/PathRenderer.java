@@ -279,7 +279,7 @@ public final class PathRenderer implements IRenderer {
             minY -= renderPosY;
             maxY -= renderPosY;
             drawDankLitGoalBox(bufferBuilder, stack, color, minX, maxX, minZ, maxZ, minY, maxY, y1, y2, setupRender);
-            drawGoalXZBeacon(stack, ctx, (GoalXZ) goal, minY, maxY, partialTicks, settings.colorGoalBox.value);
+            drawGoalXZBeacon(stack, ctx, (GoalXZ) goal, minY, maxY, partialTicks, color);
         } else if (goal instanceof GoalComposite) {
             // Simple way to determine if goals can be batched, without having some sort of GoalRenderer
             boolean batch = Arrays.stream(((GoalComposite) goal).goals()).allMatch(IGoalRenderPos.class::isInstance);
