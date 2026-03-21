@@ -279,7 +279,7 @@ public final class PathRenderer implements IRenderer {
             minY -= renderPosY;
             maxY -= renderPosY;
             drawDankLitGoalBox(bufferBuilder, stack, color, minX, maxX, minZ, maxZ, minY, maxY, y1, y2, setupRender);
-            drawGoalXZBeacon(stack, ctx, (GoalXZ) goal, partialTicks, color);
+            drawGoalXZBeacon(stack, ctx, (GoalXZ) goal, minY, maxY, partialTicks, settings.colorGoalBox.value);
         } else if (goal instanceof GoalComposite) {
             // Simple way to determine if goals can be batched, without having some sort of GoalRenderer
             boolean batch = Arrays.stream(((GoalComposite) goal).goals()).allMatch(IGoalRenderPos.class::isInstance);
@@ -339,19 +339,19 @@ public final class PathRenderer implements IRenderer {
         }
     }
 
-    private static void drawGoalXZBeacon(PoseStack stack, IPlayerContext ctx, GoalXZ goal, float partialTicks, Color color) {
-        float height = (float) (ctx.world().getMaxY() - ctx.world().getMinY());
+    private static void drawGoalXZBeacon(PoseStack stack, IPlayerContext ctx, GoalXZ goal, double minY, double maxY, float partialTicks, Color color) {
         float time = settings.renderGoalAnimated.value ? (float) ctx.world().getGameTime() + partialTicks : 0.0F;
         int glowColor = (color.getRGB() & 0x00FFFFFF) | GOAL_BEACON_GLOW_ALPHA << 24;
+        double height = maxY - minY;
 
         stack.pushPose();
-        stack.translate(goal.getX() - posX(), ctx.world().getMinY() - posY(), goal.getZ() - posZ());
+        stack.translate(goal.getX() - posX(), minY - posY(), goal.getZ() - posZ());
         renderGoalXZBeaconLayer(stack, height, time, color.getRGB(), GOAL_BEACON_INNER_RADIUS, false);
         renderGoalXZBeaconLayer(stack, height, time, glowColor, GOAL_BEACON_GLOW_RADIUS, true);
         stack.popPose();
     }
 
-    private static void renderGoalXZBeaconLayer(PoseStack stack, float height, float time, int color, float radius, boolean translucent) {
+    private static void renderGoalXZBeaconLayer(PoseStack stack, double height, float time, int color, float radius, boolean translucent) {
         BufferBuilder bufferBuilder = IRenderer.startBlockQuads();
         float scroll = Mth.frac(-time * 0.2F - Mth.floor(-time * 0.1F));
 
@@ -363,12 +363,12 @@ public final class PathRenderer implements IRenderer {
         }
 
         float v0 = -1.0F + scroll;
-        float v1 = translucent ? height + v0 : height * (0.5F / radius) + v0;
+        float v1 = (float) (translucent ? height + v0 : height * (0.5F / radius) + v0);
         PoseStack.Pose pose = stack.last();
         if (translucent) {
-            emitBeaconShell(bufferBuilder, pose, color, 0.0F, height, -radius, -radius, radius, -radius, -radius, radius, radius, radius, v0, v1);
+            emitBeaconShell(bufferBuilder, pose, color, 0.0F, (float) height, -radius, -radius, radius, -radius, -radius, radius, radius, radius, v0, v1);
         } else {
-            emitBeaconShell(bufferBuilder, pose, color, 0.0F, height, 0.0F, radius, radius, 0.0F, -radius, 0.0F, 0.0F, -radius, v0, v1);
+            emitBeaconShell(bufferBuilder, pose, color, 0.0F, (float) height, 0.0F, radius, radius, 0.0F, -radius, 0.0F, 0.0F, -radius, v0, v1);
         }
 
         if (!translucent) {
