@@ -55,9 +55,6 @@ public interface AbstractGameEventListener extends IGameEventListener {
     default void onRenderPass(RenderEvent event) {}
 
     @Override
-    default void onRenderBlockEntities(RenderBlockEntitiesEvent event) {}
-
-    @Override
     default void onWorldEvent(WorldEvent event) {}
 
     @Override

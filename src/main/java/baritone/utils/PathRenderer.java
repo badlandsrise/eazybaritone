@@ -18,7 +18,6 @@
 package baritone.utils;
 
 import baritone.api.BaritoneAPI;
-import baritone.api.event.events.RenderBlockEntitiesEvent;
 import baritone.api.event.events.RenderEvent;
 import baritone.api.pathing.goals.*;
 import baritone.api.utils.BetterBlockPos;
@@ -28,6 +27,7 @@ import baritone.behavior.PathingBehavior;
 import baritone.pathing.path.PathExecutor;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import net.minecraft.client.renderer.blockentity.BeaconRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
@@ -39,7 +39,6 @@ import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
-import javax.annotation.Nonnull;
 import java.awt.*;
 import java.util.Arrays;
 import java.util.Collection;
@@ -53,6 +52,10 @@ import java.util.List;
 public final class PathRenderer implements IRenderer {
 
     private PathRenderer() {}
+
+    private static final float GOAL_BEACON_INNER_RADIUS = 0.2F;
+    private static final float GOAL_BEACON_GLOW_RADIUS = 0.25F;
+    private static final int GOAL_BEACON_GLOW_ALPHA = 32;
 
     public static double posX() {
         return renderManager.renderPosX();
@@ -87,7 +90,10 @@ public final class PathRenderer implements IRenderer {
         }
 
         if (goal != null && settings.renderGoal.value) {
-            drawGoal(event.getModelViewStack(), ctx, goal, partialTicks, settings.colorGoalBox.value);
+            if (goal instanceof GoalXZ goalXZ && settings.renderGoalXZBeacon.value) {
+                renderGoalXZBeacon(event.getModelViewStack(), ctx, goalXZ, partialTicks, settings.colorGoalBox.value);
+                drawGoal(event.getModelViewStack(), ctx, goal, partialTicks, settings.colorGoalBox.value);
+            }
         }
 
         if (!settings.renderPath.value) {
@@ -335,29 +341,68 @@ public final class PathRenderer implements IRenderer {
         }
     }
 
-    public static void renderBeaconForGoal(RenderBlockEntitiesEvent event, @Nonnull PathingBehavior behavior) {
-        final IPlayerContext ctx = behavior.ctx;
-        if (ctx.world() == null || !settings.renderGoal.value || !settings.renderGoalXZBeacon.value) {
-            return;
-        }
-        final Goal goal = behavior.getGoal();
-        if (!(goal instanceof GoalXZ goalPos)) {
-            return;
-        }
-        final DimensionType thisPlayerDimension = ctx.world().dimensionType();
-        final DimensionType currentRenderViewDimension = BaritoneAPI.getProvider().getPrimaryBaritone().getPlayerContext().world().dimensionType();
-        if (thisPlayerDimension != currentRenderViewDimension) {
-            return;
-        }
-        double minY = ctx.world().getMinY();
-        double maxY = ctx.world().getMaxY();
-        int beamHeight = (int) (maxY - minY);
-        float gameTime = (float) ctx.world().getGameTime() + event.getPartialTicks();
-        PoseStack stack = event.getPoseStack();
-        double camX = posX(), camY = posY(), camZ = posZ();
+    private static void renderGoalXZBeacon(PoseStack stack, IPlayerContext ctx, GoalXZ goal, float partialTicks, Color color) {
+        float height = (float) (ctx.world().getMaxY() - ctx.world().getMinY());
+        float time = settings.renderGoalAnimated.value ? (float) ctx.world().getGameTime() + partialTicks : 0.0F;
+        int glowColor = (color.getRGB() & 0x00FFFFFF) | GOAL_BEACON_GLOW_ALPHA << 24;
+
         stack.pushPose();
-        stack.translate(goalPos.getX() - camX, minY - camY, goalPos.getZ() - camZ);
-        IRenderer.submitBeaconBeam(stack, event.getCollector(), BeaconRenderer.BEAM_LOCATION, 1.0f, gameTime, 0, beamHeight, settings.colorGoalBox.value.getRGB(), .2f, .25f);
+        stack.translate(goal.getX() - posX(), ctx.world().getMinY() - posY(), goal.getZ() - posZ());
+        renderGoalXZBeaconLayer(stack, height, time, color.getRGB(), GOAL_BEACON_INNER_RADIUS, false);
+        renderGoalXZBeaconLayer(stack, height, time, glowColor, GOAL_BEACON_GLOW_RADIUS, true);
         stack.popPose();
+    }
+
+    private static void renderGoalXZBeaconLayer(PoseStack stack, float height, float time, int color, float radius, boolean translucent) {
+        BufferBuilder bufferBuilder = IRenderer.startBlockQuads();
+        float scroll = Mth.frac(-time * 0.2F - Mth.floor(-time * 0.1F));
+
+        stack.pushPose();
+        stack.translate(0.5D, 0.0D, 0.5D);
+        if (!translucent) {
+            stack.pushPose();
+            stack.mulPose(Axis.YP.rotationDegrees(time * 2.25F - 45.0F));
+        }
+
+        float v0 = -1.0F + scroll;
+        float v1 = translucent ? height + v0 : height * (0.5F / radius) + v0;
+        PoseStack.Pose pose = stack.last();
+        if (translucent) {
+            emitBeaconShell(bufferBuilder, pose, color, 0.0F, height, -radius, -radius, radius, -radius, -radius, radius, radius, radius, v0, v1);
+        } else {
+            emitBeaconShell(bufferBuilder, pose, color, 0.0F, height, 0.0F, radius, radius, 0.0F, -radius, 0.0F, 0.0F, -radius, v0, v1);
+        }
+
+        if (!translucent) {
+            stack.popPose();
+        }
+        stack.popPose();
+
+        IRenderer.endBuffer(bufferBuilder, IRenderer.beaconBeam(BeaconRenderer.BEAM_LOCATION, translucent, settings.renderGoalIgnoreDepth.value));
+    }
+
+    private static void emitBeaconShell(BufferBuilder bufferBuilder, PoseStack.Pose pose, int color, float minY, float maxY,
+                                        float x1, float z1, float x2, float z2, float x3, float z3, float x4, float z4,
+                                        float v0, float v1) {
+        emitBeaconFace(bufferBuilder, pose, color, minY, maxY, x1, z1, x2, z2, 0.0F, 1.0F, v0, v1);
+        emitBeaconFace(bufferBuilder, pose, color, minY, maxY, x4, z4, x3, z3, 0.0F, 1.0F, v0, v1);
+        emitBeaconFace(bufferBuilder, pose, color, minY, maxY, x2, z2, x4, z4, 0.0F, 1.0F, v0, v1);
+        emitBeaconFace(bufferBuilder, pose, color, minY, maxY, x3, z3, x1, z1, 0.0F, 1.0F, v0, v1);
+    }
+
+    private static void emitBeaconFace(BufferBuilder bufferBuilder, PoseStack.Pose pose, int color, float minY, float maxY,
+                                       float x1, float z1, float x2, float z2, float u0, float u1, float v0, float v1) {
+        float nx = z2 - z1;
+        float nz = x1 - x2;
+        float length = Mth.sqrt(nx * nx + nz * nz);
+        if (length != 0.0F) {
+            nx /= length;
+            nz /= length;
+        }
+
+        IRenderer.emitTexturedVertex(bufferBuilder, pose, x1, maxY, z1, color, u1, v0, nx, 0.0F, nz);
+        IRenderer.emitTexturedVertex(bufferBuilder, pose, x1, minY, z1, color, u1, v1, nx, 0.0F, nz);
+        IRenderer.emitTexturedVertex(bufferBuilder, pose, x2, minY, z2, color, u0, v1, nx, 0.0F, nz);
+        IRenderer.emitTexturedVertex(bufferBuilder, pose, x2, maxY, z2, color, u0, v0, nx, 0.0F, nz);
     }
 }

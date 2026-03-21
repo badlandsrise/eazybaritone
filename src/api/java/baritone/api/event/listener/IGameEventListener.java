@@ -93,14 +93,6 @@ public interface IGameEventListener {
     void onRenderPass(RenderEvent event);
 
     /**
-     * Runs from within submitBlockEntities.
-     *
-     * @param event The event
-     */
-    void onRenderBlockEntities(RenderBlockEntitiesEvent event);
-
-
-    /**
      * Runs before and after whenever a new world is loaded
      *
      * @param event The event
