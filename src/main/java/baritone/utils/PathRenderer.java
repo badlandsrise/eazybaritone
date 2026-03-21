@@ -90,10 +90,7 @@ public final class PathRenderer implements IRenderer {
         }
 
         if (goal != null && settings.renderGoal.value) {
-            if (goal instanceof GoalXZ goalXZ && settings.renderGoalXZBeacon.value) {
-                renderGoalXZBeacon(event.getModelViewStack(), ctx, goalXZ, partialTicks, settings.colorGoalBox.value);
-                drawGoal(event.getModelViewStack(), ctx, goal, partialTicks, settings.colorGoalBox.value);
-            }
+            drawGoal(event.getModelViewStack(), ctx, goal, partialTicks, settings.colorGoalBox.value);
         }
 
         if (!settings.renderPath.value) {
@@ -282,6 +279,7 @@ public final class PathRenderer implements IRenderer {
             minY -= renderPosY;
             maxY -= renderPosY;
             drawDankLitGoalBox(bufferBuilder, stack, color, minX, maxX, minZ, maxZ, minY, maxY, y1, y2, setupRender);
+            drawGoalXZBeacon(stack, ctx, (GoalXZ) goal, partialTicks, color);
         } else if (goal instanceof GoalComposite) {
             // Simple way to determine if goals can be batched, without having some sort of GoalRenderer
             boolean batch = Arrays.stream(((GoalComposite) goal).goals()).allMatch(IGoalRenderPos.class::isInstance);
@@ -341,7 +339,7 @@ public final class PathRenderer implements IRenderer {
         }
     }
 
-    private static void renderGoalXZBeacon(PoseStack stack, IPlayerContext ctx, GoalXZ goal, float partialTicks, Color color) {
+    private static void drawGoalXZBeacon(PoseStack stack, IPlayerContext ctx, GoalXZ goal, float partialTicks, Color color) {
         float height = (float) (ctx.world().getMaxY() - ctx.world().getMinY());
         float time = settings.renderGoalAnimated.value ? (float) ctx.world().getGameTime() + partialTicks : 0.0F;
         int glowColor = (color.getRGB() & 0x00FFFFFF) | GOAL_BEACON_GLOW_ALPHA << 24;
