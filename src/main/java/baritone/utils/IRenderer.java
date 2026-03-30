@@ -30,13 +30,18 @@ import com.mojang.blaze3d.platform.SourceFactor;
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.blockentity.BeaconRenderer;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.Util;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.awt.*;
+import java.util.function.BiFunction;
 
 public interface IRenderer {
 
@@ -53,6 +58,28 @@ public interface IRenderer {
         .withDepthWrite(false)
         .withCull(false)
         .buildSnippet();
+
+    RenderPipeline.Snippet BARITONE_BEACON_BEAM_SNIPPET = RenderPipeline.builder(((IRenderPipelines) new RenderPipelines()).getMatricesFogSnippet())
+            .withVertexShader("core/rendertype_beacon_beam")
+            .withFragmentShader("core/rendertype_beacon_beam")
+            .withSampler("Sampler0")
+            .withVertexFormat(DefaultVertexFormat.BLOCK, VertexFormat.Mode.QUADS)
+            .buildSnippet();
+
+    RenderPipeline BEACON_BEAM_OPAQUE = ((IRenderPipelines) new RenderPipelines()).baritone$registerPipeline(RenderPipeline.builder(BARITONE_BEACON_BEAM_SNIPPET)
+            .withLocation("pipeline/baritone_beacon_beam_opaque")
+            .withDepthWrite(false)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withCull(true)
+            .build());
+
+    RenderPipeline BEACON_BEAM_TRANSLUCENT = ((IRenderPipelines) new RenderPipelines()).baritone$registerPipeline(RenderPipeline.builder(BARITONE_BEACON_BEAM_SNIPPET)
+            .withLocation("pipeline/baritone_beacon_beam_translucent")
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withCull(true)
+            .build());
 
     RenderType linesWithDepthRenderType = ((IRenderType) RenderTypes.lines()).createRenderType(
         "renderType/baritone_lines_with_depth",
@@ -71,6 +98,16 @@ public interface IRenderer {
                 .build())
             .bufferSize(256)
             .createRenderSetup()
+    );
+
+
+    BiFunction<Identifier, Boolean, RenderType> BEACON_BEAM = Util.memoize(
+            (identifier, boolean_) -> ((IRenderType) RenderTypes.beaconBeam(BeaconRenderer.BEAM_LOCATION, boolean_)).createRenderType(
+                    boolean_ ? "renderType/baritone_beacon_beam_translucent" : "renderType/baritone_beacon_beam_opaque",
+            RenderSetup.builder(boolean_ ? BEACON_BEAM_TRANSLUCENT : BEACON_BEAM_OPAQUE)
+                    .withTexture("Sampler0", identifier)
+                    .sortOnUpload()
+                    .createRenderSetup())
     );
 
     float[] color = new float[]{1.0F, 1.0F, 1.0F, 255.0F};
@@ -100,6 +137,17 @@ public interface IRenderer {
             } else {
                 linesWithDepthRenderType.draw(meshData);
             }
+        }
+    }
+
+    static BufferBuilder startBlockQuads() {
+        return tessellator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
+    }
+
+    static void endBuffer(BufferBuilder bufferBuilder, RenderType renderType) {
+        MeshData meshData = bufferBuilder.build();
+        if (meshData != null) {
+            renderType.draw(meshData);
         }
     }
 
@@ -173,4 +221,20 @@ public interface IRenderer {
         emitLine(bufferBuilder, stack, start.x - vpX, start.y - vpY, start.z - vpZ, end.x - vpX, end.y - vpY, end.z - vpZ, lineWidth);
     }
 
+    static void emitTexturedVertex(BufferBuilder bufferBuilder, PoseStack.Pose pose, float x, float y, float z, int color, float u, float v, float nx, float ny, float nz) {
+        bufferBuilder.addVertex(pose, x, y, z)
+                .setColor(color)
+                .setUv(u, v)
+                .setOverlay(OverlayTexture.NO_OVERLAY)
+                .setLight(15728880)
+                .setNormal(pose, nx, ny, nz);
+    }
+
+    static RenderType beaconBeam(Identifier identifier, boolean bl) {
+        return BEACON_BEAM.apply(identifier, bl);
+    }
+
+    static RenderType beaconBeam(Identifier identifier, boolean bl, boolean ignoreDepth) {
+        return ignoreDepth ? beaconBeam(identifier, bl) : RenderTypes.beaconBeam(identifier, bl);
+    }
 }
