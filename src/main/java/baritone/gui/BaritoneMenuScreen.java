@@ -47,6 +47,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * A beginner-friendly menu for starting Baritone jobs without memorizing chat
@@ -107,7 +108,9 @@ public class BaritoneMenuScreen extends Screen {
     private String gotoX = "", gotoY = "", gotoZ = "";
     private String waypointName = "";
     private String farmRadius = "32";
+    private String subFrom = "", subTo = "";
     private String statusMessage = "";
+    private int buildSubsLabelY = -1;
 
     public BaritoneMenuScreen() {
         super(Component.literal("Baritone"));
@@ -379,22 +382,112 @@ public class BaritoneMenuScreen extends Screen {
             String l = n.toLowerCase(Locale.ROOT);
             return l.endsWith(".schem") || l.endsWith(".schematic") || l.endsWith(".litematic") || l.endsWith(".nbt");
         });
+        int rowY = top;
         if (files == null || files.length == 0) {
             statusMessage = "No schematics found in " + dir.getPath();
+        } else {
+            int maxFileRows = 3;
+            for (int i = 0; i < Math.min(files.length, maxFileRows); i++) {
+                File f = files[i];
+                this.addRenderableWidget(Button.builder(Component.literal("Build " + f.getName()), b -> {
+                    BetterBlockPos feet = baritone().getPlayerContext().playerFeet();
+                    baritone().getBuilderProcess().build(f.getName(), f, feet);
+                    this.onClose();
+                }).bounds(left, rowY, 240, 20).build());
+                rowY += 22;
+            }
+        }
+
+        // block substitutions ("schematic wants X, place Y instead")
+        int subTop = rowY + 16;
+        buildSubsLabelY = subTop - 11;
+
+        EditBox from = new EditBox(this.font, left, subTop, 105, 18, Component.literal("block in schematic"));
+        from.setHint(Component.literal("acacia_planks"));
+        from.setValue(subFrom);
+        from.setResponder(s -> subFrom = s);
+        this.addRenderableWidget(from);
+
+        EditBox to = new EditBox(this.font, left + 110, subTop, 105, 18, Component.literal("block to place"));
+        to.setHint(Component.literal("oak_planks"));
+        to.setValue(subTo);
+        to.setResponder(s -> subTo = s);
+        this.addRenderableWidget(to);
+
+        this.addRenderableWidget(Button.builder(Component.literal("Add swap"), b -> addSubstitution())
+                .bounds(left + 220, subTop - 1, 70, 20).build());
+
+        Settings settings = BaritoneAPI.getSettings();
+        int swapY = subTop + 24;
+        for (Map.Entry<Block, List<Block>> entry : settings.buildSubstitutes.value.entrySet()) {
+            for (Block target : entry.getValue()) {
+                if (swapY > this.height - 52) {
+                    break;
+                }
+                String fromName = BuiltInRegistries.BLOCK.getKey(entry.getKey()).getPath();
+                String toName = BuiltInRegistries.BLOCK.getKey(target).getPath();
+                final Block fromBlock = entry.getKey(), toBlock = target;
+                this.addRenderableWidget(Button.builder(
+                        Component.literal(fromName + " -> " + toName + "   [click to remove]"),
+                        b -> removeSubstitution(fromBlock, toBlock)).bounds(left, swapY, 290, 18).build());
+                swapY += 21;
+            }
+        }
+    }
+
+    private Block findBlock(String raw) {
+        String name = raw.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
+        if (name.startsWith("minecraft:")) {
+            name = name.substring("minecraft:".length());
+        }
+        if (name.isEmpty()) {
+            return null;
+        }
+        return BuiltInRegistries.BLOCK.getOptional(Identifier.withDefaultNamespace(name)).orElse(null);
+    }
+
+    private void addSubstitution() {
+        Block fromBlock = findBlock(subFrom);
+        Block toBlock = findBlock(subTo);
+        if (fromBlock == null || toBlock == null) {
+            statusMessage = "Unknown block name: " + (fromBlock == null ? subFrom : subTo);
             return;
         }
-        int rowY = top;
-        for (File f : files) {
-            if (rowY > this.height - 56) {
-                break;
-            }
-            this.addRenderableWidget(Button.builder(Component.literal("Build " + f.getName()), b -> {
-                BetterBlockPos feet = baritone().getPlayerContext().playerFeet();
-                baritone().getBuilderProcess().build(f.getName(), f, feet);
-                this.onClose();
-            }).bounds(left, rowY, 240, 20).build());
-            rowY += 24;
+        Settings settings = BaritoneAPI.getSettings();
+        Map<Block, List<Block>> copy = deepCopySubstitutes(settings.buildSubstitutes.value);
+        List<Block> targets = copy.computeIfAbsent(fromBlock, k -> new ArrayList<>());
+        if (!targets.contains(toBlock)) {
+            targets.add(toBlock);
         }
+        settings.buildSubstitutes.value = copy;
+        SettingsUtil.save(settings);
+        subFrom = "";
+        subTo = "";
+        statusMessage = "";
+        this.rebuildWidgets();
+    }
+
+    private void removeSubstitution(Block fromBlock, Block toBlock) {
+        Settings settings = BaritoneAPI.getSettings();
+        Map<Block, List<Block>> copy = deepCopySubstitutes(settings.buildSubstitutes.value);
+        List<Block> targets = copy.get(fromBlock);
+        if (targets != null) {
+            targets.remove(toBlock);
+            if (targets.isEmpty()) {
+                copy.remove(fromBlock);
+            }
+        }
+        settings.buildSubstitutes.value = copy;
+        SettingsUtil.save(settings);
+        this.rebuildWidgets();
+    }
+
+    private static Map<Block, List<Block>> deepCopySubstitutes(Map<Block, List<Block>> map) {
+        Map<Block, List<Block>> copy = new java.util.HashMap<>();
+        for (Map.Entry<Block, List<Block>> entry : map.entrySet()) {
+            copy.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        }
+        return copy;
     }
 
     // ------------------------------------------------------------------ AREA
@@ -495,6 +588,11 @@ public class BaritoneMenuScreen extends Screen {
                 extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
                 y += 11;
             }
+        }
+
+        if (this.tab == Tab.BUILD && buildSubsLabelY > 0) {
+            extractor.text(this.font, "Substitutions - if the schematic wants the left block, place the right one:",
+                    contentLeft(), buildSubsLabelY, 0xFFDDDDDD, true);
         }
 
         // status bar: what's baritone doing right now
