@@ -146,7 +146,10 @@ public interface IRenderer {
         }
         stagedBuffer.endDraw();
         stagedBuffer.upload();
-        renderType.prepare().drawFromBuffer(stagedBuffer.getExecuteInfo(currentDraw[0]));
+        StagedVertexBuffer.ExecuteInfo info = stagedBuffer.getExecuteInfo(currentDraw[0]);
+        if (info != null) {
+            renderType.prepare().drawFromBuffer(info);
+        }
         currentDraw[0] = null;
     }
 

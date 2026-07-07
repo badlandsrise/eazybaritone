@@ -109,7 +109,7 @@ allprojects {
 }
 
 unimined.minecraft {
-    runs.off = true
+    runs.off = false
     defaultRemapJar = false
 }
 
