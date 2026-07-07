@@ -94,6 +94,13 @@ public class MixinMinecraft {
             at = @At("RETURN")
     )
     private void postRunTick(CallbackInfo ci) {
+        Minecraft mc = (Minecraft) (Object) this;
+        while (baritone.gui.BaritoneKeybinds.OPEN_MENU.consumeClick()) {
+            if (mc.level != null && mc.gui.screen() == null) {
+                mc.gui.setScreen(new baritone.gui.BaritoneMenuScreen());
+            }
+        }
+
         if (this.tickProvider == null) {
             return;
         }

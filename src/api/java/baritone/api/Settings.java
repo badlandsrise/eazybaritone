@@ -1409,6 +1409,11 @@ public final class Settings {
     public final Setting<Boolean> desktopNotifications = new Setting<>(false);
 
     /**
+     * Show a one-line HUD overlay while a Baritone job is active (added by the menu GUI).
+     */
+    public final Setting<Boolean> guiHud = new Setting<>(true);
+
+    /**
      * Desktop notification on path complete
      */
     public final Setting<Boolean> notificationOnPathComplete = new Setting<>(true);
