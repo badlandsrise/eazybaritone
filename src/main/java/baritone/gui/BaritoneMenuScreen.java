@@ -63,6 +63,7 @@ public class BaritoneMenuScreen extends Screen {
         FOLLOW("Follow"),
         FARM("Farm"),
         BUILD("Build"),
+        AREA("Area"),
         SETTINGS("Settings");
 
         final String label;
@@ -138,7 +139,7 @@ public class BaritoneMenuScreen extends Screen {
     protected void init() {
         // tab row
         int tabCount = Tab.values().length;
-        int tabWidth = 46;
+        int tabWidth = 44;
         int tabsLeft = this.width / 2 - (tabCount * (tabWidth + 2)) / 2;
         for (Tab t : Tab.values()) {
             Button b = Button.builder(Component.literal(t.label), btn -> {
@@ -156,6 +157,7 @@ public class BaritoneMenuScreen extends Screen {
             case FOLLOW -> initFollow();
             case FARM -> initFarm();
             case BUILD -> initBuild();
+            case AREA -> initArea();
             case SETTINGS -> initSettings();
         }
 
@@ -395,6 +397,62 @@ public class BaritoneMenuScreen extends Screen {
         }
     }
 
+    // ------------------------------------------------------------------ AREA
+
+    private void initArea() {
+        int left = contentLeft();
+        int top = contentTop();
+
+        this.addRenderableWidget(Button.builder(Component.literal("Corner 1 = here"), b -> runCommandKeepOpen("sel pos1"))
+                .bounds(left, top, 95, 20).build());
+        this.addRenderableWidget(Button.builder(Component.literal("Corner 2 = here"), b -> runCommandKeepOpen("sel pos2"))
+                .bounds(left + 100, top, 95, 20).build());
+        this.addRenderableWidget(Button.builder(Component.literal("Pick by clicking"), b -> {
+            if (this.minecraft != null) {
+                this.minecraft.gui.setScreen(new baritone.utils.GuiClick());
+            }
+        }).bounds(left + 200, top, 100, 20).build());
+
+        boolean hasSelection = baritone().getSelectionManager().getSelections().length > 0;
+
+        Button clear = Button.builder(Component.literal("Clear area (dig it out)").copy().withStyle(ChatFormatting.RED),
+                b -> runCommand("sel cleararea")).bounds(left, top + 24, 145, 20).build();
+        clear.active = hasSelection;
+        this.addRenderableWidget(clear);
+
+        Button deselect = Button.builder(Component.literal("Deselect"), b -> runCommandKeepOpen("sel clear"))
+                .bounds(left + 150, top + 24, 70, 20).build();
+        deselect.active = hasSelection;
+        this.addRenderableWidget(deselect);
+    }
+
+    private void runCommandKeepOpen(String command) {
+        baritone().getCommandManager().execute(command);
+        this.rebuildWidgets();
+    }
+
+    private List<String> areaInfoLines() {
+        List<String> lines = new ArrayList<>();
+        baritone.api.selection.ISelection[] selections = baritone().getSelectionManager().getSelections();
+        if (selections.length == 0) {
+            lines.add("No area selected yet.");
+            lines.add("Stand on a corner and press \"Corner 1 = here\", walk to the opposite");
+            lines.add("corner and press \"Corner 2 = here\" - or use \"Pick by clicking\" and");
+            lines.add("drag from one block to another, then press B to come back here.");
+        } else {
+            for (baritone.api.selection.ISelection sel : selections) {
+                BetterBlockPos min = sel.min(), max = sel.max();
+                int dx = max.x - min.x + 1, dy = max.y - min.y + 1, dz = max.z - min.z + 1;
+                lines.add("Selected: (" + min.x + ", " + min.y + ", " + min.z + ") to (" + max.x + ", " + max.y + ", " + max.z + ")"
+                        + "  -  " + dx + " x " + dy + " x " + dz + " = " + (dx * (long) dy * dz) + " blocks");
+            }
+            if (!BaritoneAPI.getSettings().allowBreak.value) {
+                lines.add("Warning: \"Break blocks\" is OFF in Settings - clearing needs it.");
+            }
+        }
+        return lines;
+    }
+
     // -------------------------------------------------------------- SETTINGS
 
     private void initSettings() {
@@ -429,6 +487,14 @@ public class BaritoneMenuScreen extends Screen {
 
         if (!statusMessage.isEmpty()) {
             extractor.centeredText(this.font, Component.literal(statusMessage), this.width / 2, this.height - 44, 0xFFFFAA55);
+        }
+
+        if (this.tab == Tab.AREA) {
+            int y = contentTop() + 54;
+            for (String line : areaInfoLines()) {
+                extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
+                y += 11;
+            }
         }
 
         // status bar: what's baritone doing right now

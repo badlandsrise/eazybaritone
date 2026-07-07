@@ -53,6 +53,7 @@ public class GuiClick extends Screen implements Helper {
 
     private BlockPos clickStart;
     private BlockPos currentMouseOver;
+    private boolean receivedClick;
 
     public GuiClick() {
         super(Component.literal("CLICK"));
@@ -92,6 +93,11 @@ public class GuiClick extends Screen implements Helper {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        if (!receivedClick) {
+            // ignore a release whose press happened before this screen opened
+            // (e.g. the button click that opened us from the Baritone menu)
+            return super.mouseReleased(event);
+        }
         if (currentMouseOver != null) { //Catch this, or else a click into void will result in a crash
             if (event.button() == 0) {
                 if (clickStart != null && !clickStart.equals(currentMouseOver)) {
@@ -118,6 +124,7 @@ public class GuiClick extends Screen implements Helper {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        receivedClick = true;
         clickStart = currentMouseOver;
         return super.mouseClicked(event, doubleClick);
     }
