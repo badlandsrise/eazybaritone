@@ -79,7 +79,12 @@ public interface IWaypoint {
         /**
          * Tag indicating that the waypoint was user-created
          */
-        USER("user");
+        USER("user"),
+
+        /**
+         * Tag indicating a supply chest the builder may restock from
+         */
+        SUPPLY("supply");
 
         /**
          * A list of all of the

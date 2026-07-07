@@ -97,6 +97,7 @@ public class BaritoneMenuScreen extends Screen {
             {"allowDownward", "Dig straight down"},
             {"mineScanDroppedItems", "Grab dropped items while mining"},
             {"notificationOnPathComplete", "Notify when path completes"},
+            {"buildRestockFromChests", "Restock builds from supply chests"},
             {"guiHud", "Show job HUD overlay"},
     };
 
@@ -114,8 +115,10 @@ public class BaritoneMenuScreen extends Screen {
     private int blockPickTarget = 0; // 0 = none, 1 = swap-from, 2 = swap-to, 3 = rule-target
     private String pickerSearch = "";
     private boolean restoreSearchFocus = false;
+    private File materialsFor = null; // schematic whose materials list is being shown
     private String statusMessage = "";
     private int buildSubsLabelY = -1;
+    private List<String> materialsLines = null;
 
     private static final String[] COMMON_PICKS = {
             "cobblestone", "cobbled_deepslate", "stone", "stone_bricks", "bricks", "sandstone",
@@ -403,14 +406,29 @@ public class BaritoneMenuScreen extends Screen {
             initBlockPicker();
             return;
         }
+        if (materialsFor != null) {
+            initMaterialsList();
+            return;
+        }
         int left = contentLeft();
         int top = contentTop();
+
+        // supply chest management
+        int supplyCount = baritone().getWorldProvider().getCurrentWorld() == null ? 0
+                : baritone().getWorldProvider().getCurrentWorld().getWaypoints().getByTag(IWaypoint.Tag.SUPPLY).size();
+        this.addRenderableWidget(Button.builder(Component.literal("Mark supply chest (aim at it first)"), b -> markSupplyChest())
+                .bounds(left, top, 200, 20).build());
+        Button forget = Button.builder(Component.literal("Forget all (" + supplyCount + ")"), b -> forgetSupplyChests())
+                .bounds(left + 205, top, 85, 20).build();
+        forget.active = supplyCount > 0;
+        this.addRenderableWidget(forget);
+
         File dir = new File(this.minecraft.gameDirectory, "schematics");
         File[] files = dir.listFiles((d, n) -> {
             String l = n.toLowerCase(Locale.ROOT);
             return l.endsWith(".schem") || l.endsWith(".schematic") || l.endsWith(".litematic") || l.endsWith(".nbt");
         });
-        int rowY = top;
+        int rowY = top + 26;
         if (files == null || files.length == 0) {
             statusMessage = "No schematics found in " + dir.getPath();
         } else {
@@ -421,7 +439,12 @@ public class BaritoneMenuScreen extends Screen {
                     BetterBlockPos feet = baritone().getPlayerContext().playerFeet();
                     baritone().getBuilderProcess().build(f.getName(), f, feet);
                     this.onClose();
-                }).bounds(left, rowY, 240, 20).build());
+                }).bounds(left, rowY, 185, 20).build());
+                this.addRenderableWidget(Button.builder(Component.literal("List"), b -> {
+                    materialsFor = f;
+                    materialsLines = null;
+                    this.rebuildWidgets();
+                }).bounds(left + 190, rowY, 50, 20).build());
                 rowY += 22;
             }
         }
@@ -492,6 +515,91 @@ public class BaritoneMenuScreen extends Screen {
         pickerSearch = "";
         statusMessage = "";
         this.rebuildWidgets();
+    }
+
+    private void markSupplyChest() {
+        if (this.minecraft == null || !(this.minecraft.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit)) {
+            statusMessage = "Aim at a chest, then reopen the menu and click this.";
+            return;
+        }
+        net.minecraft.core.BlockPos pos = hit.getBlockPos();
+        if (this.minecraft.level == null
+                || !(this.minecraft.level.getBlockEntity(pos) instanceof net.minecraft.world.Container)) {
+            statusMessage = "That block isn't a container. Aim at a chest or barrel.";
+            return;
+        }
+        IWaypointCollection waypoints = waypoints();
+        if (waypoints == null) {
+            statusMessage = "No world loaded";
+            return;
+        }
+        waypoints.addWaypoint(new Waypoint("supply", IWaypoint.Tag.SUPPLY,
+                new BetterBlockPos(pos.getX(), pos.getY(), pos.getZ())));
+        statusMessage = "Marked supply chest at " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ();
+        this.rebuildWidgets();
+    }
+
+    private void forgetSupplyChests() {
+        IWaypointCollection waypoints = waypoints();
+        if (waypoints == null) {
+            return;
+        }
+        for (IWaypoint wp : new ArrayList<>(waypoints.getByTag(IWaypoint.Tag.SUPPLY))) {
+            waypoints.removeWaypoint(wp);
+        }
+        this.rebuildWidgets();
+    }
+
+    private void initMaterialsList() {
+        buildSubsLabelY = -1;
+        int left = contentLeft();
+        int top = contentTop();
+        this.addRenderableWidget(Button.builder(Component.literal("< Back"), b -> {
+            materialsFor = null;
+            materialsLines = null;
+            this.rebuildWidgets();
+        }).bounds(left, top, 60, 20).build());
+
+        if (materialsLines == null) {
+            materialsLines = computeMaterials(materialsFor);
+        }
+    }
+
+    private List<String> computeMaterials(File file) {
+        Map<Block, Integer> counts = baritone.utils.schematic.SchematicMaterials.count(file);
+        List<String> lines = new ArrayList<>();
+        if (counts == null) {
+            lines.add("Could not read " + file.getName());
+            return lines;
+        }
+        lines.add(file.getName() + " needs:");
+        int shown = 0;
+        for (Map.Entry<Block, Integer> entry : counts.entrySet()) {
+            if (shown++ >= 16) {
+                lines.add("...and " + (counts.size() - 16) + " more block types");
+                break;
+            }
+            String name = BuiltInRegistries.BLOCK.getKey(entry.getKey()).getPath();
+            int need = entry.getValue();
+            int have = countInInventory(entry.getKey());
+            int shortBy = Math.max(0, need - have);
+            String status = shortBy == 0 ? " (have enough)" : " - short " + shortBy + " (" + ((need + 63) / 64) + " stacks total)";
+            lines.add("  " + need + "x " + name + status);
+        }
+        return lines;
+    }
+
+    private int countInInventory(Block block) {
+        if (this.minecraft == null || this.minecraft.player == null) {
+            return 0;
+        }
+        int total = 0;
+        for (ItemStack stack : this.minecraft.player.getInventory().getNonEquipmentItems()) {
+            if (!stack.isEmpty() && stack.getItem() instanceof net.minecraft.world.item.BlockItem bi && bi.getBlock() == block) {
+                total += stack.getCount();
+            }
+        }
+        return total;
     }
 
     private void initBlockPicker() {
@@ -715,7 +823,13 @@ public class BaritoneMenuScreen extends Screen {
             }
         }
 
-        if (this.tab == Tab.BUILD && buildSubsLabelY > 0) {
+        if (this.tab == Tab.BUILD && materialsFor != null && materialsLines != null) {
+            int y = contentTop() + 28;
+            for (String line : materialsLines) {
+                extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
+                y += 11;
+            }
+        } else if (this.tab == Tab.BUILD && buildSubsLabelY > 0) {
             extractor.text(this.font, "Substitutions - if the schematic wants the left block, place the right one:",
                     contentLeft(), buildSubsLabelY, 0xFFDDDDDD, true);
         }

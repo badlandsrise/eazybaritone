@@ -1422,6 +1422,12 @@ public final class Settings {
     public final Setting<List<String>> guiSubstitutionRules = new Setting<>(new ArrayList<>());
 
     /**
+     * Allow the builder to walk to waypoints tagged as supply chests and restock
+     * needed materials from them when it runs out, instead of pausing.
+     */
+    public final Setting<Boolean> buildRestockFromChests = new Setting<>(true);
+
+    /**
      * Desktop notification on path complete
      */
     public final Setting<Boolean> notificationOnPathComplete = new Setting<>(true);
