@@ -1414,6 +1414,14 @@ public final class Settings {
     public final Setting<Boolean> guiHud = new Setting<>(true);
 
     /**
+     * Category-based fallback substitutions for builds, managed by the menu GUI.
+     * Each entry is {@code category->block}, e.g. {@code stairs->cobblestone_stairs}:
+     * whenever a schematic asks for any block of that category that is not in the
+     * inventory, the given block is placed instead.
+     */
+    public final Setting<List<String>> guiSubstitutionRules = new Setting<>(new ArrayList<>());
+
+    /**
      * Desktop notification on path complete
      */
     public final Setting<Boolean> notificationOnPathComplete = new Setting<>(true);

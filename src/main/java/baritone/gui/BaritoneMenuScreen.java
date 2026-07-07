@@ -109,8 +109,20 @@ public class BaritoneMenuScreen extends Screen {
     private String waypointName = "";
     private String farmRadius = "32";
     private String subFrom = "", subTo = "";
+    private int ruleCategoryIndex = 0;
+    private String ruleTarget = "";
+    private int blockPickTarget = 0; // 0 = none, 1 = swap-from, 2 = swap-to, 3 = rule-target
+    private String pickerSearch = "";
+    private boolean restoreSearchFocus = false;
     private String statusMessage = "";
     private int buildSubsLabelY = -1;
+
+    private static final String[] COMMON_PICKS = {
+            "cobblestone", "cobbled_deepslate", "stone", "stone_bricks", "bricks", "sandstone",
+            "dirt", "oak_planks", "spruce_planks", "birch_planks", "glass", "glass_pane",
+            "cobblestone_stairs", "oak_stairs", "stone_brick_stairs", "cobblestone_slab", "oak_slab", "stone_brick_slab",
+            "cobblestone_wall", "oak_fence", "oak_fence_gate", "oak_door", "oak_trapdoor", "oak_log"
+    };
 
     public BaritoneMenuScreen() {
         super(Component.literal("Baritone"));
@@ -185,9 +197,14 @@ public class BaritoneMenuScreen extends Screen {
         search.setValue(mineSearch);
         search.setResponder(s -> {
             mineSearch = s;
+            restoreSearchFocus = true;
             this.rebuildWidgets();
         });
         this.addRenderableWidget(search);
+        if (restoreSearchFocus) {
+            this.setInitialFocus(search);
+            restoreSearchFocus = false;
+        }
 
         EditBox qty = new EditBox(this.font, left + 210, top, 60, 18, Component.literal("amount"));
         qty.setHint(Component.literal("amount"));
@@ -195,10 +212,21 @@ public class BaritoneMenuScreen extends Screen {
         qty.setResponder(s -> mineQuantity = s.replaceAll("[^0-9]", ""));
         this.addRenderableWidget(qty);
 
+        addBlockGrid(mineSearch, PINNED_BLOCKS, top + 28, block -> {
+            String id = BuiltInRegistries.BLOCK.getKey(block).getPath();
+            String amount = mineQuantity.trim();
+            runCommand(amount.isEmpty() ? "mine " + id : "mine " + amount + " " + id);
+        });
+    }
+
+    /**
+     * A searchable grid of clickable block icons; the shared "block picker".
+     */
+    private void addBlockGrid(String query, String[] pinned, int gridTop, java.util.function.Consumer<Block> onPick) {
         List<Block> shown = new ArrayList<>();
-        String q = mineSearch.trim().toLowerCase(Locale.ROOT);
+        String q = query.trim().toLowerCase(Locale.ROOT);
         if (q.isEmpty()) {
-            for (String id : PINNED_BLOCKS) {
+            for (String id : pinned) {
                 BuiltInRegistries.BLOCK.getOptional(Identifier.withDefaultNamespace(id)).ifPresent(shown::add);
             }
         } else {
@@ -212,7 +240,6 @@ public class BaritoneMenuScreen extends Screen {
 
         int cols = 12, cell = 24;
         int gridLeft = this.width / 2 - (cols * cell) / 2;
-        int gridTop = top + 28;
         for (int i = 0; i < Math.min(shown.size(), 36); i++) {
             Block block = shown.get(i);
             Identifier id = BuiltInRegistries.BLOCK.getKey(block);
@@ -223,10 +250,7 @@ public class BaritoneMenuScreen extends Screen {
             ItemButton btn = new ItemButton(
                     gridLeft + (i % cols) * cell, gridTop + (i / cols) * cell, cell - 2, cell - 2,
                     Component.literal(id.getPath()), icon,
-                    () -> {
-                        String amount = mineQuantity.trim();
-                        runCommand(amount.isEmpty() ? "mine " + id.getPath() : "mine " + amount + " " + id.getPath());
-                    });
+                    () -> onPick.accept(block));
             btn.setTooltip(Tooltip.create(Component.literal(id.getPath().replace('_', ' '))));
             this.addRenderableWidget(btn);
         }
@@ -375,6 +399,10 @@ public class BaritoneMenuScreen extends Screen {
     // ----------------------------------------------------------------- BUILD
 
     private void initBuild() {
+        if (blockPickTarget != 0) {
+            initBlockPicker();
+            return;
+        }
         int left = contentLeft();
         int top = contentTop();
         File dir = new File(this.minecraft.gameDirectory, "schematics");
@@ -402,23 +430,47 @@ public class BaritoneMenuScreen extends Screen {
         int subTop = rowY + 16;
         buildSubsLabelY = subTop - 11;
 
-        EditBox from = new EditBox(this.font, left, subTop, 105, 18, Component.literal("block in schematic"));
-        from.setHint(Component.literal("acacia_planks"));
-        from.setValue(subFrom);
-        from.setResponder(s -> subFrom = s);
-        this.addRenderableWidget(from);
+        this.addRenderableWidget(Button.builder(Component.literal(subFrom.isEmpty() ? "schematic block..." : subFrom), b -> openPicker(1))
+                .bounds(left, subTop, 105, 20).build());
 
-        EditBox to = new EditBox(this.font, left + 110, subTop, 105, 18, Component.literal("block to place"));
-        to.setHint(Component.literal("oak_planks"));
-        to.setValue(subTo);
-        to.setResponder(s -> subTo = s);
-        this.addRenderableWidget(to);
+        this.addRenderableWidget(Button.builder(Component.literal(subTo.isEmpty() ? "place instead..." : subTo), b -> openPicker(2))
+                .bounds(left + 110, subTop, 105, 20).build());
 
         this.addRenderableWidget(Button.builder(Component.literal("Add swap"), b -> addSubstitution())
-                .bounds(left + 220, subTop - 1, 70, 20).build());
+                .bounds(left + 220, subTop, 70, 20).build());
+
+        // category fallback rules: "any stairs I'm missing -> cobblestone_stairs"
+        String category = baritone.utils.schematic.CategorySubstitutions.CATEGORIES[ruleCategoryIndex];
+        int ruleTop = subTop + 23;
+        this.addRenderableWidget(Button.builder(Component.literal("Any: " + category), b -> {
+            ruleCategoryIndex = (ruleCategoryIndex + 1) % baritone.utils.schematic.CategorySubstitutions.CATEGORIES.length;
+            this.rebuildWidgets();
+        }).bounds(left, ruleTop, 105, 20).build());
+
+        this.addRenderableWidget(Button.builder(Component.literal(ruleTarget.isEmpty() ? "fallback block..." : ruleTarget), b -> openPicker(3))
+                .bounds(left + 110, ruleTop, 105, 20).build());
+
+        this.addRenderableWidget(Button.builder(Component.literal("Add rule"), b -> addCategoryRule())
+                .bounds(left + 220, ruleTop, 70, 20).build());
 
         Settings settings = BaritoneAPI.getSettings();
-        int swapY = subTop + 24;
+        int swapY = ruleTop + 24;
+
+        for (String rule : settings.guiSubstitutionRules.value) {
+            if (swapY > this.height - 52) {
+                break;
+            }
+            String[] parts = rule.split("->", 2);
+            String label = parts.length == 2
+                    ? "any " + parts[0] + " (" + baritone.utils.schematic.CategorySubstitutions.count(parts[0]) + " blocks) -> " + parts[1]
+                    : rule;
+            final String toRemove = rule;
+            this.addRenderableWidget(Button.builder(
+                    Component.literal(label + "   [click to remove]"),
+                    b -> removeCategoryRule(toRemove)).bounds(left, swapY, 290, 18).build());
+            swapY += 21;
+        }
+
         for (Map.Entry<Block, List<Block>> entry : settings.buildSubstitutes.value.entrySet()) {
             for (Block target : entry.getValue()) {
                 if (swapY > this.height - 52) {
@@ -433,6 +485,79 @@ public class BaritoneMenuScreen extends Screen {
                 swapY += 21;
             }
         }
+    }
+
+    private void openPicker(int target) {
+        blockPickTarget = target;
+        pickerSearch = "";
+        statusMessage = "";
+        this.rebuildWidgets();
+    }
+
+    private void initBlockPicker() {
+        buildSubsLabelY = -1;
+        int left = contentLeft();
+        int top = contentTop();
+
+        EditBox search = new EditBox(this.font, left, top, 190, 18, Component.literal("search"));
+        search.setHint(Component.literal("Search blocks..."));
+        search.setValue(pickerSearch);
+        search.setResponder(s -> {
+            pickerSearch = s;
+            restoreSearchFocus = true;
+            this.rebuildWidgets();
+        });
+        this.addRenderableWidget(search);
+        if (restoreSearchFocus) {
+            this.setInitialFocus(search);
+            restoreSearchFocus = false;
+        }
+
+        this.addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> {
+            blockPickTarget = 0;
+            this.rebuildWidgets();
+        }).bounds(left + 210, top - 1, 60, 20).build());
+
+        addBlockGrid(pickerSearch, COMMON_PICKS, top + 28, block -> {
+            String path = BuiltInRegistries.BLOCK.getKey(block).getPath();
+            switch (blockPickTarget) {
+                case 1 -> subFrom = path;
+                case 2 -> subTo = path;
+                case 3 -> ruleTarget = path;
+            }
+            blockPickTarget = 0;
+            pickerSearch = "";
+            this.rebuildWidgets();
+        });
+    }
+
+    private void addCategoryRule() {
+        Block target = findBlock(ruleTarget);
+        if (target == null) {
+            statusMessage = "Unknown block name: " + ruleTarget;
+            return;
+        }
+        String category = baritone.utils.schematic.CategorySubstitutions.CATEGORIES[ruleCategoryIndex];
+        String rule = category + "->" + BuiltInRegistries.BLOCK.getKey(target).getPath();
+        Settings settings = BaritoneAPI.getSettings();
+        List<String> rules = new ArrayList<>(settings.guiSubstitutionRules.value);
+        if (!rules.contains(rule)) {
+            rules.add(rule);
+        }
+        settings.guiSubstitutionRules.value = rules;
+        SettingsUtil.save(settings);
+        ruleTarget = "";
+        statusMessage = "";
+        this.rebuildWidgets();
+    }
+
+    private void removeCategoryRule(String rule) {
+        Settings settings = BaritoneAPI.getSettings();
+        List<String> rules = new ArrayList<>(settings.guiSubstitutionRules.value);
+        rules.remove(rule);
+        settings.guiSubstitutionRules.value = rules;
+        SettingsUtil.save(settings);
+        this.rebuildWidgets();
     }
 
     private Block findBlock(String raw) {

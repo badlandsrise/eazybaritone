@@ -37,6 +37,7 @@ import baritone.utils.BaritoneProcessHelper;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.PathingCommandContext;
 import baritone.utils.schematic.MapArtSchematic;
+import baritone.utils.schematic.CategorySubstitutions;
 import baritone.utils.schematic.SchematicSystem;
 import baritone.utils.schematic.SelectionSchematic;
 import baritone.utils.schematic.litematica.LitematicaHelper;
@@ -102,8 +103,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         this.schematic = schematic;
         this.realSchematic = null;
         boolean buildingSelectionSchematic = schematic instanceof SelectionSchematic;
-        if (!Baritone.settings().buildSubstitutes.value.isEmpty()) {
-            this.schematic = new SubstituteSchematic(this.schematic, Baritone.settings().buildSubstitutes.value);
+        Map<Block, List<Block>> substitutes = new HashMap<>();
+        Baritone.settings().buildSubstitutes.value.forEach((block, targets) -> substitutes.put(block, new ArrayList<>(targets)));
+        CategorySubstitutions.expandInto(substitutes, Baritone.settings().guiSubstitutionRules.value);
+        if (!substitutes.isEmpty()) {
+            this.schematic = new SubstituteSchematic(this.schematic, substitutes);
         }
         if (Baritone.settings().buildSchematicMirror.value != net.minecraft.world.level.block.Mirror.NONE) {
             this.schematic = new MirroredSchematic(this.schematic, Baritone.settings().buildSchematicMirror.value);
