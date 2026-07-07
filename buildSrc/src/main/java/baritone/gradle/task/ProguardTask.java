@@ -18,7 +18,6 @@
 package baritone.gradle.task;
 
 import baritone.gradle.util.Determinizer;
-import org.gradle.api.plugins.JavaPluginConvention;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.SourceSetContainer;
 import org.gradle.api.tasks.TaskAction;
@@ -172,7 +171,7 @@ public class ProguardTask extends BaritoneGradleTask {
     }
 
     private Stream<File> acquireDependencies() {
-        return getProject().getConvention().getPlugin(JavaPluginConvention.class).getSourceSets().findByName("main").getCompileClasspath().getFiles()
+        return sourceSets.getByName("main").getCompileClasspath().getFiles()
                 .stream()
                 .filter(File::isFile);
     }
@@ -224,13 +223,20 @@ public class ProguardTask extends BaritoneGradleTask {
 
         Path workingDirectory = getTemporaryFile("");
 
-        getProject().javaexec(spec -> {
-            spec.workingDir(workingDirectory.toFile());
-            spec.args("@" + workingDirectory.relativize(config));
-            spec.classpath(getTemporaryFile(String.format(PROGUARD_JAR, proguardVersion)));
+        List<String> command = new ArrayList<>();
+        command.add(getJavaLauncherForProguard().getExecutablePath().getAsFile().getAbsolutePath());
+        command.add("-jar");
+        command.add(getTemporaryFile(String.format(PROGUARD_JAR, proguardVersion)).toAbsolutePath().toString());
+        command.add("@" + workingDirectory.relativize(config));
 
-            spec.executable(getJavaLauncherForProguard().getExecutablePath().getAsFile());
-        }).assertNormalExitValue().rethrowFailure();
+        Process process = new ProcessBuilder(command)
+                .directory(workingDirectory.toFile())
+                .inheritIO()
+                .start();
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new IllegalStateException("ProGuard exited with code " + exitCode);
+        }
     }
 
 }

@@ -22,14 +22,17 @@ import baritone.api.Settings;
 import baritone.utils.accessor.IEntityRenderManager;
 import baritone.utils.accessor.IRenderPipelines;
 import baritone.utils.accessor.IRenderType;
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
+import com.mojang.blaze3d.pipeline.DepthStencilState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.DepthTestFunction;
-import com.mojang.blaze3d.platform.DestFactor;
-import com.mojang.blaze3d.platform.SourceFactor;
+import com.mojang.blaze3d.platform.BlendFactor;
+import com.mojang.blaze3d.platform.CompareOp;
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.StagedVertexBuffer;
 import net.minecraft.client.renderer.blockentity.BeaconRenderer;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -45,39 +48,34 @@ import java.util.function.BiFunction;
 
 public interface IRenderer {
 
-    Tesselator tessellator = Tesselator.getInstance();
+    StagedVertexBuffer stagedBuffer = new StagedVertexBuffer(() -> "baritone", RenderType.SMALL_BUFFER_SIZE);
+    StagedVertexBuffer.Draw[] currentDraw = new StagedVertexBuffer.Draw[1];
     IEntityRenderManager renderManager = (IEntityRenderManager) Minecraft.getInstance().getEntityRenderDispatcher();
     Settings settings = BaritoneAPI.getSettings();
+
     RenderPipeline.Snippet BARITONE_LINES_SNIPPET = RenderPipeline.builder(((IRenderPipelines) new RenderPipelines()).getLinesSnippet())
-        .withBlend(new BlendFunction(
-            SourceFactor.SRC_ALPHA,
-            DestFactor.ONE_MINUS_SRC_ALPHA,
-            SourceFactor.ONE,
-            DestFactor.ZERO
-        ))
-        .withDepthWrite(false)
+        .withColorTargetState(new ColorTargetState(new BlendFunction(
+            BlendFactor.SRC_ALPHA,
+            BlendFactor.ONE_MINUS_SRC_ALPHA,
+            BlendFactor.ONE,
+            BlendFactor.ZERO
+        )))
         .withCull(false)
         .buildSnippet();
 
-    RenderPipeline.Snippet BARITONE_BEACON_BEAM_SNIPPET = RenderPipeline.builder(((IRenderPipelines) new RenderPipelines()).getMatricesFogSnippet())
-            .withVertexShader("core/rendertype_beacon_beam")
-            .withFragmentShader("core/rendertype_beacon_beam")
-            .withSampler("Sampler0")
-            .withVertexFormat(DefaultVertexFormat.BLOCK, VertexFormat.Mode.QUADS)
+    RenderPipeline.Snippet BARITONE_BEACON_BEAM_SNIPPET = RenderPipeline.builder(((IRenderPipelines) new RenderPipelines()).getBeaconBeamSnippet())
             .buildSnippet();
 
     RenderPipeline BEACON_BEAM_OPAQUE = ((IRenderPipelines) new RenderPipelines()).baritone$registerPipeline(RenderPipeline.builder(BARITONE_BEACON_BEAM_SNIPPET)
             .withLocation("pipeline/baritone_beacon_beam_opaque")
-            .withDepthWrite(false)
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
             .withCull(true)
             .build());
 
     RenderPipeline BEACON_BEAM_TRANSLUCENT = ((IRenderPipelines) new RenderPipelines()).baritone$registerPipeline(RenderPipeline.builder(BARITONE_BEACON_BEAM_SNIPPET)
             .withLocation("pipeline/baritone_beacon_beam_translucent")
-            .withDepthWrite(false)
-            .withBlend(BlendFunction.TRANSLUCENT)
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+            .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
             .withCull(true)
             .build());
 
@@ -85,18 +83,16 @@ public interface IRenderer {
         "renderType/baritone_lines_with_depth",
         RenderSetup.builder(RenderPipeline.builder(BARITONE_LINES_SNIPPET)
             .withLocation("pipelines/baritone_lines_with_depth")
-            .withDepthTestFunction(DepthTestFunction.LEQUAL_DEPTH_TEST)
+            .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
             .build())
-            .bufferSize(256)
             .createRenderSetup()
     );
     RenderType linesNoDepthRenderType = ((IRenderType) RenderTypes.lines()).createRenderType(
         "renderType/baritone_lines_no_depth",
         RenderSetup.builder(RenderPipeline.builder(BARITONE_LINES_SNIPPET)
                 .withLocation("pipelines/baritone_lines_no_depth")
-                .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+                .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
                 .build())
-            .bufferSize(256)
             .createRenderSetup()
     );
 
@@ -120,38 +116,45 @@ public interface IRenderer {
         IRenderer.color[3] = alpha;
     }
 
-    static BufferBuilder startLines(Color color, float alpha) {
+    static VertexConsumer startLines(Color color, float alpha) {
         glColor(color, alpha);
-        return tessellator.begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL_LINE_WIDTH);
+        currentDraw[0] = stagedBuffer.appendDraw(DefaultVertexFormat.POSITION_COLOR_NORMAL_LINE_WIDTH, PrimitiveTopology.LINES);
+        return stagedBuffer.getVertexBuilder(currentDraw[0]);
     }
 
-    static BufferBuilder startLines(Color color) {
+    static VertexConsumer startLines(Color color) {
         return startLines(color, .4f);
     }
 
-    static void endLines(BufferBuilder bufferBuilder, boolean ignoredDepth) {
-        MeshData meshData = bufferBuilder.build();
-        if (meshData != null) {
-            if (ignoredDepth) {
-                linesNoDepthRenderType.draw(meshData);
-            } else {
-                linesWithDepthRenderType.draw(meshData);
-            }
+    static void endLines(VertexConsumer bufferBuilder, boolean ignoredDepth) {
+        RenderType renderType = ignoredDepth ? linesNoDepthRenderType : linesWithDepthRenderType;
+        drawCurrent(renderType);
+    }
+
+    static VertexConsumer startBlockQuads() {
+        currentDraw[0] = stagedBuffer.appendDraw(DefaultVertexFormat.BLOCK, PrimitiveTopology.QUADS);
+        return stagedBuffer.getVertexBuilder(currentDraw[0]);
+    }
+
+    static void endBuffer(VertexConsumer bufferBuilder, RenderType renderType) {
+        drawCurrent(renderType);
+    }
+
+    static void drawCurrent(RenderType renderType) {
+        if (currentDraw[0] == null) {
+            return;
         }
+        stagedBuffer.endDraw();
+        stagedBuffer.upload();
+        renderType.prepare().drawFromBuffer(stagedBuffer.getExecuteInfo(currentDraw[0]));
+        currentDraw[0] = null;
     }
 
-    static BufferBuilder startBlockQuads() {
-        return tessellator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
+    static void endFrame() {
+        stagedBuffer.endFrame();
     }
 
-    static void endBuffer(BufferBuilder bufferBuilder, RenderType renderType) {
-        MeshData meshData = bufferBuilder.build();
-        if (meshData != null) {
-            renderType.draw(meshData);
-        }
-    }
-
-    static void emitLine(BufferBuilder bufferBuilder, PoseStack stack, double x1, double y1, double z1, double x2, double y2, double z2, float lineWidth) {
+    static void emitLine(VertexConsumer bufferBuilder, PoseStack stack, double x1, double y1, double z1, double x2, double y2, double z2, float lineWidth) {
         final double dx = x2 - x1;
         final double dy = y2 - y1;
         final double dz = z2 - z1;
@@ -164,7 +167,7 @@ public interface IRenderer {
         emitLine(bufferBuilder, stack, x1, y1, z1, x2, y2, z2, nx, ny, nz, lineWidth);
     }
 
-    static void emitLine(BufferBuilder bufferBuilder, PoseStack stack,
+    static void emitLine(VertexConsumer bufferBuilder, PoseStack stack,
                          double x1, double y1, double z1,
                          double x2, double y2, double z2,
                          double nx, double ny, double nz,
@@ -178,7 +181,7 @@ public interface IRenderer {
         );
     }
 
-    static void emitLine(BufferBuilder bufferBuilder, PoseStack stack,
+    static void emitLine(VertexConsumer bufferBuilder, PoseStack stack,
                          float x1, float y1, float z1,
                          float x2, float y2, float z2,
                          float nx, float ny, float nz,
@@ -190,7 +193,7 @@ public interface IRenderer {
         bufferBuilder.addVertex(pose, x2, y2, z2).setColor(color[0], color[1], color[2], color[3]).setNormal(pose, nx, ny, nz).setLineWidth(lineWidth);
     }
 
-    static void emitAABB(BufferBuilder bufferBuilder, PoseStack stack, AABB aabb, float lineWidth) {
+    static void emitAABB(VertexConsumer bufferBuilder, PoseStack stack, AABB aabb, float lineWidth) {
         AABB toDraw = aabb.move(-renderManager.renderPosX(), -renderManager.renderPosY(), -renderManager.renderPosZ());
 
         // bottom
@@ -210,18 +213,18 @@ public interface IRenderer {
         emitLine(bufferBuilder, stack, toDraw.minX, toDraw.minY, toDraw.maxZ, toDraw.minX, toDraw.maxY, toDraw.maxZ, 0.0, 1.0, 0.0, lineWidth);
     }
 
-    static void emitAABB(BufferBuilder bufferBuilder, PoseStack stack, AABB aabb, double expand, float lineWidth) {
+    static void emitAABB(VertexConsumer bufferBuilder, PoseStack stack, AABB aabb, double expand, float lineWidth) {
         emitAABB(bufferBuilder, stack, aabb.inflate(expand, expand, expand), lineWidth);
     }
 
-    static void emitLine(BufferBuilder bufferBuilder, PoseStack stack, Vec3 start, Vec3 end, float lineWidth) {
+    static void emitLine(VertexConsumer bufferBuilder, PoseStack stack, Vec3 start, Vec3 end, float lineWidth) {
         double vpX = renderManager.renderPosX();
         double vpY = renderManager.renderPosY();
         double vpZ = renderManager.renderPosZ();
         emitLine(bufferBuilder, stack, start.x - vpX, start.y - vpY, start.z - vpZ, end.x - vpX, end.y - vpY, end.z - vpZ, lineWidth);
     }
 
-    static void emitTexturedVertex(BufferBuilder bufferBuilder, PoseStack.Pose pose, float x, float y, float z, int color, float u, float v, float nx, float ny, float nz) {
+    static void emitTexturedVertex(VertexConsumer bufferBuilder, PoseStack.Pose pose, float x, float y, float z, int color, float u, float v, float nx, float ny, float nz) {
         bufferBuilder.addVertex(pose, x, y, z)
                 .setColor(color)
                 .setUv(u, v)

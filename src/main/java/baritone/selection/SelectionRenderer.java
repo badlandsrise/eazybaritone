@@ -5,7 +5,7 @@ import baritone.api.event.events.RenderEvent;
 import baritone.api.event.listener.AbstractGameEventListener;
 import baritone.api.selection.ISelection;
 import baritone.utils.IRenderer;
-import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.world.phys.AABB;
 
@@ -29,7 +29,7 @@ public class SelectionRenderer implements IRenderer, AbstractGameEventListener {
             return;
         }
 
-        BufferBuilder bufferBuilder = IRenderer.startLines(settings.colorSelection.value, opacity);
+        VertexConsumer bufferBuilder = IRenderer.startLines(settings.colorSelection.value, opacity);
 
         for (ISelection selection : selections) {
             IRenderer.emitAABB(bufferBuilder, stack, selection.aabb(), SELECTION_BOX_EXPANSION, lineWidth);

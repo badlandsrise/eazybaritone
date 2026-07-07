@@ -65,9 +65,8 @@ public class MixinMinecraft {
     @Inject(
             method = "tick",
             at = @At(
-                    value = "FIELD",
-                    opcode = Opcodes.GETFIELD,
-                    target = "net/minecraft/client/Minecraft.screen:Lnet/minecraft/client/gui/screens/Screen;",
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/gui/Gui;screen()Lnet/minecraft/client/gui/screens/Screen;",
                     ordinal = 0,
                     shift = At.Shift.BEFORE
             ),
@@ -165,14 +164,14 @@ public class MixinMinecraft {
     @Redirect(
             method = "tick",
             at = @At(
-                    value = "FIELD",
-                    opcode = Opcodes.GETFIELD,
-                    target = "Lnet/minecraft/client/Minecraft;screen:Lnet/minecraft/client/gui/screens/Screen;"
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/gui/Gui;screen()Lnet/minecraft/client/gui/screens/Screen;",
+                    ordinal = 0
             ),
             slice = @Slice(
                     from = @At(
                             value = "INVOKE",
-                            target = "Lnet/minecraft/client/gui/components/DebugScreenOverlay;showDebugScreen()Z"
+                            target = "Lnet/minecraft/client/gui/Gui;overlay()Lnet/minecraft/client/gui/screens/Overlay;"
                     ),
                     to = @At(
                             value = "CONSTANT",
@@ -180,12 +179,12 @@ public class MixinMinecraft {
                     )
             )
     )
-    private Screen passEvents(Minecraft instance) {
+    private Screen passEvents(net.minecraft.client.gui.Gui instance) {
         // allow user input is only the primary baritone
         if (BaritoneAPI.getProvider().getPrimaryBaritone().getPathingBehavior().isPathing() && player != null) {
             return null;
         }
-        return instance.screen;
+        return instance.screen();
     }
 
     // TODO

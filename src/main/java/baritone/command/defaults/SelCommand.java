@@ -42,7 +42,7 @@ import baritone.api.utils.BlockOptionalMetaLookup;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.IRenderer;
 import baritone.utils.schematic.StaticSchematic;
-import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.level.block.Blocks;
@@ -75,7 +75,7 @@ public class SelCommand extends Command {
                 float opacity = Baritone.settings().selectionOpacity.value;
                 float lineWidth = Baritone.settings().selectionLineWidth.value;
                 boolean ignoreDepth = Baritone.settings().renderSelectionIgnoreDepth.value;
-                BufferBuilder bufferBuilder = IRenderer.startLines(color, opacity);
+                VertexConsumer bufferBuilder = IRenderer.startLines(color, opacity);
                 IRenderer.emitAABB(bufferBuilder, event.getModelViewStack(), new AABB(pos1), lineWidth);
                 IRenderer.endLines(bufferBuilder, ignoreDepth);
             }

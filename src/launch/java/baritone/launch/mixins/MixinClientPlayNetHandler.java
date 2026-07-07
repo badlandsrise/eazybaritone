@@ -125,7 +125,7 @@ public abstract class MixinClientPlayNetHandler extends ClientCommonPacketListen
             LocalPlayer player = ibaritone.getPlayerContext().player();
             if (player != null && player.connection == (ClientPacketListener) (Object) this) {
                 ibaritone.getGameEventHandler().onChunkEvent(
-                        new ChunkEvent(EventState.PRE, ChunkEvent.Type.UNLOAD, packet.pos().x, packet.pos().z)
+                        new ChunkEvent(EventState.PRE, ChunkEvent.Type.UNLOAD, packet.pos().x(), packet.pos().z())
                 );
             }
         }
@@ -140,7 +140,7 @@ public abstract class MixinClientPlayNetHandler extends ClientCommonPacketListen
             LocalPlayer player = ibaritone.getPlayerContext().player();
             if (player != null && player.connection == (ClientPacketListener) (Object) this) {
                 ibaritone.getGameEventHandler().onChunkEvent(
-                        new ChunkEvent(EventState.POST, ChunkEvent.Type.UNLOAD, packet.pos().x, packet.pos().z)
+                        new ChunkEvent(EventState.POST, ChunkEvent.Type.UNLOAD, packet.pos().x(), packet.pos().z())
                 );
             }
         }
@@ -190,7 +190,7 @@ public abstract class MixinClientPlayNetHandler extends ClientCommonPacketListen
             return;
         }
         baritone.getGameEventHandler().onBlockChange(new BlockChangeEvent(
-                new ChunkPos(changes.get(0).first()),
+                new ChunkPos(changes.get(0).first().getX() >> 4, changes.get(0).first().getZ() >> 4),
                 changes
         ));
     }

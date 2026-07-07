@@ -31,7 +31,7 @@ import baritone.utils.BlockStateInterface;
 import baritone.utils.IRenderer;
 import baritone.utils.PathRenderer;
 import baritone.utils.accessor.IFireworkRocketEntity;
-import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import it.unimi.dsi.fastutil.floats.FloatIterator;
 import net.minecraft.core.BlockPos;
@@ -42,7 +42,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.projectile.FireworkRocketEntity;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.Fireworks;
@@ -246,7 +246,7 @@ public final class ElytraBehavior implements Helper {
                             final Throwable cause = ex.getCause();
                             if (cause instanceof PathCalculationException) {
                                 logDirect("Failed to compute next segment");
-                                if (ctx.player().distanceToSqr(pathStart.getCenter()) < 16 * 16) {
+                                if (ctx.player().distanceToSqr(Vec3.atCenterOf(pathStart)) < 16 * 16) {
                                     logVerbose("Player is near the segment start, therefore repeating this calculation is pointless. Marking as complete");
                                     completePath = true;
                                 }
@@ -308,7 +308,7 @@ public final class ElytraBehavior implements Helper {
 
             int rangeStartIncl = playerNear;
             int rangeEndExcl = playerNear;
-            while (rangeEndExcl < path.size() && context.hasChunk(new ChunkPos(path.get(rangeEndExcl)))) {
+            while (rangeEndExcl < path.size() && context.hasChunk(new ChunkPos(path.get(rangeEndExcl).x >> 4, path.get(rangeEndExcl).z >> 4))) {
                 rangeEndExcl++;
             }
             // rangeEndExcl now represents an index either not in the path, or just outside render distance
@@ -424,21 +424,21 @@ public final class ElytraBehavior implements Helper {
             PathRenderer.drawGoal(event.getModelViewStack(), ctx, new GoalBlock(this.aimPos), event.getPartialTicks(), Color.GREEN);
         }
         if (!this.clearLines.isEmpty() && settings.elytraRenderRaytraces.value) {
-            BufferBuilder bufferBuilder = IRenderer.startLines(Color.GREEN);
+            VertexConsumer bufferBuilder = IRenderer.startLines(Color.GREEN);
             for (Pair<Vec3, Vec3> line : this.clearLines) {
                 IRenderer.emitLine(bufferBuilder, event.getModelViewStack(), line.first(), line.second(), settings.pathRenderLineWidthPixels.value);
             }
             IRenderer.endLines(bufferBuilder, settings.renderPathIgnoreDepth.value);
         }
         if (!this.blockedLines.isEmpty() && Baritone.settings().elytraRenderRaytraces.value) {
-            BufferBuilder bufferBuilder = IRenderer.startLines(Color.BLUE);
+            VertexConsumer bufferBuilder = IRenderer.startLines(Color.BLUE);
             for (Pair<Vec3, Vec3> line : this.blockedLines) {
                 IRenderer.emitLine(bufferBuilder, event.getModelViewStack(), line.first(), line.second(), settings.pathRenderLineWidthPixels.value);
             }
             IRenderer.endLines(bufferBuilder, settings.renderPathIgnoreDepth.value);
         }
         if (this.simulationLine != null && Baritone.settings().elytraRenderSimulation.value) {
-            BufferBuilder bufferBuilder = IRenderer.startLines(new Color(0x36CCDC));
+            VertexConsumer bufferBuilder = IRenderer.startLines(new Color(0x36CCDC));
             final Vec3 offset = ctx.player().getPosition(event.getPartialTicks());
             for (int i = 0; i < this.simulationLine.size() - 1; i++) {
                 final Vec3 src = this.simulationLine.get(i).add(offset);
@@ -517,7 +517,7 @@ public final class ElytraBehavior implements Helper {
         }
         final long now = System.currentTimeMillis();
         if ((now - this.timeLastCacheCull) / 1000 > Baritone.settings().elytraTimeBetweenCacheCullSecs.value) {
-            this.context.queueCacheCulling(ctx.player().chunkPosition().x, ctx.player().chunkPosition().z, Baritone.settings().elytraCacheCullDistance.value, this.boi);
+            this.context.queueCacheCulling(ctx.player().chunkPosition().x(), ctx.player().chunkPosition().z(), Baritone.settings().elytraCacheCullDistance.value, this.boi);
             this.timeLastCacheCull = now;
         }
     }
@@ -1283,7 +1283,7 @@ public final class ElytraBehavior implements Helper {
         if (invTickCountdown > 0) invTickCountdown--;
     }
 
-    private void queueWindowClick(int windowId, int slotId, int button, ClickType type) {
+    private void queueWindowClick(int windowId, int slotId, int button, ContainerInput type) {
         invTransactionQueue.add(() -> ctx.playerController().windowClick(windowId, slotId, button, type, ctx.player()));
     }
 
@@ -1313,9 +1313,9 @@ public final class ElytraBehavior implements Helper {
         if (goodElytraSlot != -1) {
             final int CHEST_SLOT = 6;
             final int slotId = goodElytraSlot < 9 ? goodElytraSlot + 36 : goodElytraSlot;
-            queueWindowClick(ctx.player().inventoryMenu.containerId, slotId, 0, ClickType.PICKUP);
-            queueWindowClick(ctx.player().inventoryMenu.containerId, CHEST_SLOT, 0, ClickType.PICKUP);
-            queueWindowClick(ctx.player().inventoryMenu.containerId, slotId, 0, ClickType.PICKUP);
+            queueWindowClick(ctx.player().inventoryMenu.containerId, slotId, 0, ContainerInput.PICKUP);
+            queueWindowClick(ctx.player().inventoryMenu.containerId, CHEST_SLOT, 0, ContainerInput.PICKUP);
+            queueWindowClick(ctx.player().inventoryMenu.containerId, slotId, 0, ContainerInput.PICKUP);
         }
     }
 

@@ -25,7 +25,7 @@ import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.interfaces.IGoalRenderPos;
 import baritone.behavior.PathingBehavior;
 import baritone.pathing.path.PathExecutor;
-import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.renderer.blockentity.BeaconRenderer;
@@ -74,8 +74,8 @@ public final class PathRenderer implements IRenderer {
         if (ctx.world() == null) {
             return;
         }
-        if (ctx.minecraft().screen instanceof GuiClick) {
-            ((GuiClick) ctx.minecraft().screen).onRender(event.getModelViewStack(), event.getProjectionMatrix());
+        if (ctx.minecraft().gui.screen() instanceof GuiClick) {
+            ((GuiClick) ctx.minecraft().gui.screen()).onRender(event.getModelViewStack(), event.getProjectionMatrix());
         }
 
         final float partialTicks = event.getPartialTicks();
@@ -135,7 +135,7 @@ public final class PathRenderer implements IRenderer {
     }
 
     public static void drawPath(PoseStack stack, List<BetterBlockPos> positions, int startIndex, Color color, boolean fadeOut, int fadeStart0, int fadeEnd0, double offset) {
-        BufferBuilder bufferBuilder = IRenderer.startLines(color);
+        VertexConsumer bufferBuilder = IRenderer.startLines(color);
 
         int fadeStart = fadeStart0 + startIndex;
         int fadeEnd = fadeEnd0 + startIndex;
@@ -175,7 +175,7 @@ public final class PathRenderer implements IRenderer {
         IRenderer.endLines(bufferBuilder, settings.renderPathIgnoreDepth.value);
     }
 
-    private static void emitPathLine(BufferBuilder bufferBuilder, PoseStack stack, double x1, double y1, double z1, double x2, double y2, double z2, double offset) {
+    private static void emitPathLine(VertexConsumer bufferBuilder, PoseStack stack, double x1, double y1, double z1, double x2, double y2, double z2, double offset) {
         final double extraOffset = offset + 0.03D;
 
         double vpX = posX();
@@ -208,7 +208,7 @@ public final class PathRenderer implements IRenderer {
     }
 
     public static void drawManySelectionBoxes(PoseStack stack, Entity player, Collection<BlockPos> positions, Color color) {
-        BufferBuilder bufferBuilder = IRenderer.startLines(color);
+        VertexConsumer bufferBuilder = IRenderer.startLines(color);
 
         //BlockPos blockpos = movingObjectPositionIn.getBlockPos();
         BlockStateInterface bsi = new BlockStateInterface(BaritoneAPI.getProvider().getPrimaryBaritone().getPlayerContext()); // TODO this assumes same dimension between primary baritone and render view? is this safe?
@@ -228,9 +228,9 @@ public final class PathRenderer implements IRenderer {
         drawGoal(null, stack, ctx, goal, partialTicks, color, true);
     }
 
-    private static void drawGoal(@Nullable BufferBuilder bufferBuilder, PoseStack stack, IPlayerContext ctx, Goal goal, float partialTicks, Color color, boolean setupRender) {
+    private static void drawGoal(@Nullable VertexConsumer bufferBuilder, PoseStack stack, IPlayerContext ctx, Goal goal, float partialTicks, Color color, boolean setupRender) {
         if (!setupRender && bufferBuilder == null) {
-            throw new RuntimeException("BufferBuilder must not be null if setupRender is false");
+            throw new RuntimeException("VertexConsumer must not be null if setupRender is false");
         }
         double renderPosX = posX();
         double renderPosY = posY();
@@ -283,7 +283,7 @@ public final class PathRenderer implements IRenderer {
         } else if (goal instanceof GoalComposite) {
             // Simple way to determine if goals can be batched, without having some sort of GoalRenderer
             boolean batch = Arrays.stream(((GoalComposite) goal).goals()).allMatch(IGoalRenderPos.class::isInstance);
-            BufferBuilder buf = bufferBuilder;
+            VertexConsumer buf = bufferBuilder;
             if (batch) {
                 buf = IRenderer.startLines(color, settings.goalRenderLineWidthPixels.value);
             }
@@ -309,7 +309,7 @@ public final class PathRenderer implements IRenderer {
         }
     }
 
-    private static void drawDankLitGoalBox(BufferBuilder bufferBuilder, PoseStack stack, Color colorIn, double minX, double maxX, double minZ, double maxZ, double minY, double maxY, double y1, double y2, boolean setupRender) {
+    private static void drawDankLitGoalBox(VertexConsumer bufferBuilder, PoseStack stack, Color colorIn, double minX, double maxX, double minZ, double maxZ, double minY, double maxY, double y1, double y2, boolean setupRender) {
         if (setupRender) {
             bufferBuilder = IRenderer.startLines(colorIn);
         }
@@ -330,7 +330,7 @@ public final class PathRenderer implements IRenderer {
         }
     }
 
-    private static void renderHorizontalQuad(BufferBuilder bufferBuilder, PoseStack stack, double minX, double maxX, double minZ, double maxZ, double y, float lineWidth) {
+    private static void renderHorizontalQuad(VertexConsumer bufferBuilder, PoseStack stack, double minX, double maxX, double minZ, double maxZ, double y, float lineWidth) {
         if (y != 0) {
             IRenderer.emitLine(bufferBuilder, stack, minX, y, minZ, maxX, y, minZ, 1.0, 0.0, 0.0, lineWidth);
             IRenderer.emitLine(bufferBuilder, stack, maxX, y, minZ, maxX, y, maxZ, 0.0, 0.0, 1.0, lineWidth);
@@ -352,7 +352,7 @@ public final class PathRenderer implements IRenderer {
     }
 
     private static void renderGoalXZBeaconLayer(PoseStack stack, double height, float time, int color, float radius, boolean translucent) {
-        BufferBuilder bufferBuilder = IRenderer.startBlockQuads();
+        VertexConsumer bufferBuilder = IRenderer.startBlockQuads();
         float scroll = Mth.frac(-time * 0.2F - Mth.floor(-time * 0.1F));
 
         stack.pushPose();
@@ -379,7 +379,7 @@ public final class PathRenderer implements IRenderer {
         IRenderer.endBuffer(bufferBuilder, IRenderer.beaconBeam(BeaconRenderer.BEAM_LOCATION, translucent, settings.renderGoalIgnoreDepth.value));
     }
 
-    private static void emitBeaconShell(BufferBuilder bufferBuilder, PoseStack.Pose pose, int color, float minY, float maxY,
+    private static void emitBeaconShell(VertexConsumer bufferBuilder, PoseStack.Pose pose, int color, float minY, float maxY,
                                         float x1, float z1, float x2, float z2, float x3, float z3, float x4, float z4,
                                         float v0, float v1) {
         emitBeaconFace(bufferBuilder, pose, color, minY, maxY, x1, z1, x2, z2, 0.0F, 1.0F, v0, v1);
@@ -388,7 +388,7 @@ public final class PathRenderer implements IRenderer {
         emitBeaconFace(bufferBuilder, pose, color, minY, maxY, x3, z3, x1, z1, 0.0F, 1.0F, v0, v1);
     }
 
-    private static void emitBeaconFace(BufferBuilder bufferBuilder, PoseStack.Pose pose, int color, float minY, float maxY,
+    private static void emitBeaconFace(VertexConsumer bufferBuilder, PoseStack.Pose pose, int color, float minY, float maxY,
                                        float x1, float z1, float x2, float z2, float u0, float u1, float v0, float v1) {
         float nx = z2 - z1;
         float nz = x1 - x2;
