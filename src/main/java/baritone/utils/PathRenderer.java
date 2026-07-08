@@ -57,16 +57,19 @@ public final class PathRenderer implements IRenderer {
     private static final float GOAL_BEACON_GLOW_RADIUS = 0.25F;
     private static final int GOAL_BEACON_GLOW_ALPHA = 32;
 
+    // The 26.2 gizmo pipeline consumes world-space coordinates and applies the
+    // camera transform itself, so Baritone no longer subtracts the camera
+    // position - these stay at the origin.
     public static double posX() {
-        return renderManager.renderPosX();
+        return 0;
     }
 
     public static double posY() {
-        return renderManager.renderPosY();
+        return 0;
     }
 
     public static double posZ() {
-        return renderManager.renderPosZ();
+        return 0;
     }
 
     public static void render(RenderEvent event, PathingBehavior behavior) {

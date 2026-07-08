@@ -20,36 +20,61 @@ package baritone.launch.mixins;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.event.events.RenderEvent;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
 import com.mojang.blaze3d.vertex.PoseStack;
-import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
-import net.minecraft.client.renderer.state.level.CameraRenderState;
-import org.joml.Matrix4fc;
-import org.joml.Vector4f;
+import net.minecraft.gizmos.Gizmos;
+import net.minecraft.gizmos.SimpleGizmoCollector;
+import org.joml.Matrix4f;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
+ * Fires Baritone's render pass just before the level renderer finalizes its
+ * per-frame gizmo collection, with the render thread's gizmo collector
+ * installed so {@link baritone.utils.IRenderer} can emit cuboids/lines through
+ * the 26.2 gizmo pipeline.
+ * <p>
+ * {@code finalizeGizmoCollection} (called each frame from {@code submitFeatures}
+ * during {@code render}) drains {@code renderThreadGizmos}, so injecting at its
+ * HEAD lets us add our gizmos to that same collector right before they render.
+ * {@code require = 0} keeps a target miss from ever taking the rest of Baritone
+ * down with it - worst case, world lines just don't draw.
+ *
  * @author Brady
  * @since 2/13/2020
  */
 @Mixin(LevelRenderer.class)
 public class MixinWorldRenderer {
 
+    @Shadow
+    @Final
+    private SimpleGizmoCollector renderThreadGizmos;
+
     @Inject(
-            method = "render",
-            at = @At("RETURN")
+            method = "finalizeGizmoCollection",
+            at = @At("HEAD"),
+            require = 0
     )
-    private void onStartHand(final GraphicsResourceAllocator graphicsResourceAllocator, final DeltaTracker deltaTracker, final boolean bl, final CameraRenderState cameraRenderState, final Matrix4fc matrix4fc, final GpuBufferSlice gpuBufferSlice, final Vector4f vector4f, final boolean bl2, final CallbackInfo ci) {
-        for (IBaritone ibaritone : BaritoneAPI.getProvider().getAllBaritones()) {
-            PoseStack poseStack = new PoseStack();
-            poseStack.mulPose(cameraRenderState.viewRotationMatrix);
-            ibaritone.getGameEventHandler().onRenderPass(new RenderEvent(deltaTracker.getGameTimeDeltaPartialTick(false), poseStack, cameraRenderState.projectionMatrix));
+    private void baritoneRenderPass(final CallbackInfo ci) {
+        Minecraft mc = Minecraft.getInstance();
+        float partialTicks = mc.getDeltaTracker().getGameTimeDeltaPartialTick(false);
+        PoseStack poseStack = new PoseStack();
+        Matrix4f projection = new Matrix4f();
+        try (Gizmos.TemporaryCollection collection = Gizmos.withCollector(this.renderThreadGizmos)) {
+            for (IBaritone ibaritone : BaritoneAPI.getProvider().getAllBaritones()) {
+                try {
+                    ibaritone.getGameEventHandler().onRenderPass(new RenderEvent(partialTicks, poseStack, projection));
+                } catch (Throwable t) {
+                    // never let a render listener crash the frame
+                    baritone.utils.IRenderer.pending.clear();
+                    t.printStackTrace();
+                }
+            }
         }
-        baritone.utils.IRenderer.endFrame();
     }
 }

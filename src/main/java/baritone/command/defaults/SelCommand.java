@@ -40,6 +40,7 @@ import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.BlockOptionalMeta;
 import baritone.api.utils.BlockOptionalMetaLookup;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.ClipboardGhost;
 import baritone.utils.IRenderer;
 import baritone.utils.schematic.StaticSchematic;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -232,6 +233,7 @@ public class SelCommand extends Command {
             }
             clipboard = composite;
             clipboardOffset = origin.subtract(pos);
+            ClipboardGhost.set(clipboard, clipboardOffset);
             logDirect("Selection copied");
         } else if (action == Action.PASTE) {
             BetterBlockPos playerPos = ctx.viewerPos();

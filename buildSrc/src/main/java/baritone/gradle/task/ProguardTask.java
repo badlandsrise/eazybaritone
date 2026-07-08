@@ -229,13 +229,26 @@ public class ProguardTask extends BaritoneGradleTask {
         command.add(getTemporaryFile(String.format(PROGUARD_JAR, proguardVersion)).toAbsolutePath().toString());
         command.add("@" + workingDirectory.relativize(config));
 
+        // Redirect ProGuard's output to a file rather than inheritIO(). When run
+        // under the Gradle daemon, inheritIO() feeds the daemon's stdout pipe,
+        // which nobody drains; once ProGuard emits enough notes/warnings the pipe
+        // fills and ProGuard deadlocks in a write while we sit in waitFor(). A file
+        // sink is unbounded and can never block.
+        File proguardLog = workingDirectory.resolve("proguard-output.log").toFile();
         Process process = new ProcessBuilder(command)
                 .directory(workingDirectory.toFile())
-                .inheritIO()
+                .redirectErrorStream(true)
+                .redirectOutput(proguardLog)
                 .start();
         int exitCode = process.waitFor();
         if (exitCode != 0) {
-            throw new IllegalStateException("ProGuard exited with code " + exitCode);
+            String tail = "";
+            try {
+                List<String> lines = Files.readAllLines(proguardLog.toPath());
+                tail = String.join("\n", lines.subList(Math.max(0, lines.size() - 40), lines.size()));
+            } catch (IOException ignored) {}
+            throw new IllegalStateException("ProGuard exited with code " + exitCode
+                    + (tail.isEmpty() ? "" : "\n--- proguard-output.log (tail) ---\n" + tail));
         }
     }
 

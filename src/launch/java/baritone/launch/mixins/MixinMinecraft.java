@@ -36,6 +36,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.Slice;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.function.BiFunction;
 
@@ -113,6 +114,45 @@ public class MixinMinecraft {
         }
 
         this.tickProvider = null;
+    }
+
+    @Inject(
+            method = "startAttack",
+            at = @At("HEAD"),
+            cancellable = true
+    )
+    private void onStartAttack(CallbackInfoReturnable<Boolean> cir) {
+        // Blaze-rod selection wand: left-click sets corner 1. Consume the click
+        // so the rod doesn't break the block.
+        if (baritone.utils.SelectionWand.onClick((Minecraft) (Object) this, false)) {
+            cir.setReturnValue(false);
+        }
+    }
+
+    @Inject(
+            method = "startUseItem",
+            at = @At("HEAD"),
+            cancellable = true
+    )
+    private void onStartUseItem(CallbackInfo ci) {
+        // Blaze-rod selection wand: right-click sets corner 2. Consume the click
+        // so the rod doesn't place/use anything.
+        if (baritone.utils.SelectionWand.onClick((Minecraft) (Object) this, true)) {
+            ci.cancel();
+        }
+    }
+
+    @Inject(
+            method = "continueAttack",
+            at = @At("HEAD"),
+            cancellable = true
+    )
+    private void onContinueAttack(boolean leftClickHeld, CallbackInfo ci) {
+        // Don't let a held left-click chip the block while the blaze rod is
+        // acting as a selection wand.
+        if (leftClickHeld && baritone.utils.SelectionWand.isActive((Minecraft) (Object) this)) {
+            ci.cancel();
+        }
     }
 
     @Inject(

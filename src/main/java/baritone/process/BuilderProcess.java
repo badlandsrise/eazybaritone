@@ -48,12 +48,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import baritone.api.utils.Tuple;
-import baritone.api.cache.IWaypoint;
-import baritone.api.cache.IWaypointCollection;
-import net.minecraft.world.Container;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.inventory.ChestMenu;
-import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -98,14 +93,6 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private List<BlockState> approxPlaceable;
     public int stopAtHeight = 0;
 
-    // supply-chest restocking
-    private BetterBlockPos restockTarget;
-    private final Set<BetterBlockPos> restockTried = new HashSet<>();
-    private Set<Block> restockNeeded;
-    private boolean restockedAnything;
-    private int restockTicks;
-    private Map<Block, List<Block>> activeSubstitutes = Collections.emptyMap();
-
     public BuilderProcess(Baritone baritone) {
         super(baritone);
     }
@@ -119,11 +106,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         Map<Block, List<Block>> substitutes = new HashMap<>();
         Baritone.settings().buildSubstitutes.value.forEach((block, targets) -> substitutes.put(block, new ArrayList<>(targets)));
         CategorySubstitutions.expandInto(substitutes, Baritone.settings().guiSubstitutionRules.value);
-        this.activeSubstitutes = substitutes;
         if (!substitutes.isEmpty()) {
             this.schematic = new SubstituteSchematic(this.schematic, substitutes);
         }
-        resetRestock();
         if (Baritone.settings().buildSchematicMirror.value != net.minecraft.world.level.block.Mirror.NONE) {
             this.schematic = new MirroredSchematic(this.schematic, Baritone.settings().buildSchematicMirror.value);
         }
@@ -619,169 +604,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     layer++;
                     return onTick(calcFailed, isSafeToCancel, recursions + 1);
                 }
-                PathingCommand restock = tryRestock(bcc, isSafeToCancel);
-                if (restock != null) {
-                    return restock;
-                }
                 logDirect("Unable to do it. Pausing. resume to resume, cancel to cancel");
                 paused = true;
                 return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
             }
         }
         return new PathingCommandContext(goal, PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH, bcc);
-    }
-
-    private void resetRestock() {
-        restockTarget = null;
-        restockNeeded = null;
-        restockedAnything = false;
-        restockTicks = 0;
-        restockTried.clear();
-    }
-
-    /**
-     * Called when the build would otherwise pause for lack of materials. If
-     * restocking is enabled and supply chests are known, walks to a chest and
-     * pulls needed blocks from it, then resumes building. Returns null to let
-     * the normal pause happen (restocking disabled, no chests, or exhausted).
-     */
-    private PathingCommand tryRestock(BuilderCalculationContext bcc, boolean isSafeToCancel) {
-        if (!Baritone.settings().buildRestockFromChests.value || !Baritone.settings().allowInventory.value) {
-            return null;
-        }
-        // if a chest is already open, take what we need from it
-        if (ctx.player().containerMenu instanceof ChestMenu) {
-            return handleOpenChest((ChestMenu) ctx.player().containerMenu);
-        }
-        if (!isSafeToCancel || !ctx.player().onGround()) {
-            return null;
-        }
-        // figure out what we're missing
-        if (restockNeeded == null) {
-            restockNeeded = neededMissingBlocks(bcc);
-        }
-        if (restockNeeded.isEmpty()) {
-            // pause is due to unreachable geometry, not missing materials
-            return null;
-        }
-        // pick the nearest supply chest we haven't given up on
-        if (restockTarget == null) {
-            restockTarget = nearestSupplyChest();
-            restockTicks = 0;
-            if (restockTarget == null) {
-                return null; // no supply chests known -> real pause
-            }
-            logDirect("Out of materials, heading to a supply chest at " + restockTarget);
-        }
-        // in reach? open it. otherwise walk closer.
-        Optional<Rotation> rot = RotationUtils.reachable(ctx, restockTarget, ctx.playerController().getBlockReachDistance());
-        if (rot.isPresent()) {
-            baritone.getLookBehavior().updateTarget(rot.get(), true);
-            if (ctx.isLookingAt(restockTarget)) {
-                baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
-            }
-            return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
-        }
-        if (++restockTicks > 1200) { // ~1 min trying to reach this chest, give up on it
-            logDirect("Could not reach supply chest at " + restockTarget + ", skipping it");
-            restockTried.add(restockTarget);
-            restockTarget = null;
-            return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
-        }
-        return new PathingCommand(new GoalGetToBlock(restockTarget), PathingCommandType.SET_GOAL_AND_PATH);
-    }
-
-    private PathingCommand handleOpenChest(ChestMenu menu) {
-        Container container = menu.getContainer();
-        int chestSize = container.getContainerSize();
-        if (restockNeeded != null && !playerInventoryFull()) {
-            for (int i = 0; i < chestSize; i++) {
-                ItemStack stack = container.getItem(i);
-                if (stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) {
-                    continue;
-                }
-                Block block = ((BlockItem) stack.getItem()).getBlock();
-                if (!restockNeeded.contains(block)) {
-                    continue;
-                }
-                // shift-click this stack into our inventory, one stack per tick
-                ctx.playerController().windowClick(menu.containerId, i, 0, ContainerInput.QUICK_MOVE, ctx.player());
-                restockedAnything = true;
-                return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
-            }
-        }
-        // nothing (more) useful in this chest; close and decide what's next
-        ctx.player().closeContainer();
-        if (restockTarget != null) {
-            restockTried.add(restockTarget);
-        }
-        restockTarget = null;
-        if (restockedAnything) {
-            logDirect("Restocked, resuming build");
-            restockedAnything = false;
-            restockNeeded = null; // recompute against new inventory
-            restockTried.clear();
-        }
-        return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
-    }
-
-    private Set<Block> neededMissingBlocks(BuilderCalculationContext bcc) {
-        Set<Block> needed = new HashSet<>();
-        for (BetterBlockPos pos : incorrectPositions) {
-            BlockState state = bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z));
-            if (state == null || state.getBlock() instanceof AirBlock) {
-                continue;
-            }
-            Block block = state.getBlock();
-            needed.add(block);
-            List<Block> subs = activeSubstitutes.get(block);
-            if (subs != null) {
-                needed.addAll(subs);
-            }
-        }
-        needed.removeIf(this::haveBlock);
-        return needed;
-    }
-
-    private boolean haveBlock(Block block) {
-        for (int i = 0; i < 36; i++) {
-            ItemStack stack = ctx.player().getInventory().getNonEquipmentItems().get(i);
-            if (!stack.isEmpty() && stack.getItem() instanceof BlockItem && ((BlockItem) stack.getItem()).getBlock() == block) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean playerInventoryFull() {
-        for (int i = 0; i < 36; i++) {
-            if (ctx.player().getInventory().getNonEquipmentItems().get(i).isEmpty()) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private BetterBlockPos nearestSupplyChest() {
-        if (baritone.getWorldProvider().getCurrentWorld() == null) {
-            return null;
-        }
-        IWaypointCollection waypoints = baritone.getWorldProvider().getCurrentWorld().getWaypoints();
-        BetterBlockPos me = ctx.playerFeet();
-        BetterBlockPos best = null;
-        double bestDist = Double.MAX_VALUE;
-        for (IWaypoint wp : waypoints.getByTag(IWaypoint.Tag.SUPPLY)) {
-            BetterBlockPos pos = wp.getLocation();
-            if (restockTried.contains(pos)) {
-                continue;
-            }
-            double dist = pos.distSqr(me);
-            if (dist < bestDist) {
-                bestDist = dist;
-                best = pos;
-            }
-        }
-        return best;
     }
 
     private boolean recalc(BuilderCalculationContext bcc) {

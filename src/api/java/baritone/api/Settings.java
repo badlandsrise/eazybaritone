@@ -1422,10 +1422,20 @@ public final class Settings {
     public final Setting<List<String>> guiSubstitutionRules = new Setting<>(new ArrayList<>());
 
     /**
-     * Allow the builder to walk to waypoints tagged as supply chests and restock
-     * needed materials from them when it runs out, instead of pausing.
+     * Hold the wand item ({@link #selectionWandItem}, a blaze rod by default)
+     * and left-click a block to set selection corner 1, right-click to set
+     * corner 2 (like the Litematica/WorldEdit wand). The click is consumed so
+     * the item won't break or place anything. Disable this to use the item
+     * normally.
      */
-    public final Setting<Boolean> buildRestockFromChests = new Setting<>(true);
+    public final Setting<Boolean> selectionWand = new Setting<>(true);
+
+    /**
+     * The item used as the selection wand (see {@link #selectionWand}), as an
+     * item id like {@code blaze_rod} or {@code stick}. Change it with the picker
+     * in the menu's Area tab if a blaze rod is inconvenient.
+     */
+    public final Setting<String> selectionWandItem = new Setting<>("blaze_rod");
 
     /**
      * Desktop notification on path complete

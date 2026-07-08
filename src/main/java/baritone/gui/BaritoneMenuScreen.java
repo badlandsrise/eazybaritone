@@ -39,15 +39,19 @@ import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A beginner-friendly menu for starting Baritone jobs without memorizing chat
@@ -63,8 +67,8 @@ public class BaritoneMenuScreen extends Screen {
         GOTO("Go to"),
         FOLLOW("Follow"),
         FARM("Farm"),
-        BUILD("Build"),
         AREA("Area"),
+        CLIPBOARD("Clip"),
         SETTINGS("Settings");
 
         final String label;
@@ -84,22 +88,96 @@ public class BaritoneMenuScreen extends Screen {
     };
 
     /**
-     * Human-friendly labels for the curated settings tab. Order matters.
+     * The most-used settings, in the order they should appear at the top of the
+     * Settings tab, each paired with a short plain-English description. Any
+     * setting not listed here still appears below (alphabetically) with an
+     * auto-generated label. Names that don't exist are skipped harmlessly.
      */
-    private static final String[][] TOGGLE_SETTINGS = {
+    private static final String[][] COMMON_SETTINGS = {
+            // permissions / movement
             {"allowBreak", "Break blocks"},
             {"allowPlace", "Place blocks"},
             {"allowSprint", "Sprint"},
             {"allowParkour", "Parkour jumps"},
-            {"allowInventory", "Use inventory"},
-            {"freeLook", "Free look (camera stays yours)"},
-            {"legitMine", "Legit mine (no xray-like mining)"},
+            {"allowParkourPlace", "Place blocks mid-parkour"},
+            {"allowInventory", "Use blocks from your inventory"},
             {"allowDownward", "Dig straight down"},
-            {"mineScanDroppedItems", "Grab dropped items while mining"},
-            {"notificationOnPathComplete", "Notify when path completes"},
-            {"buildRestockFromChests", "Restock builds from supply chests"},
+            {"allowDiagonalDescend", "Descend diagonally"},
+            {"allowDiagonalAscend", "Ascend diagonally"},
+            {"allowWaterBucketFall", "Water-bucket to break long falls"},
+            {"assumeWalkOnWater", "Assume you can walk on water"},
+            {"step", "Step up full blocks without jumping"},
+            // mining
+            {"legitMine", "Legit mine (no x-ray behaviour)"},
+            {"mineScanDroppedItems", "Pick up dropped items while mining"},
+            {"mineGoalUpdateInterval", "Mining rescan interval (ticks)"},
+            {"blockReachDistance", "How far you can reach to mine (blocks)"},
+            // building
+            {"buildInLayers", "Build layer by layer"},
+            {"layerOrder", "Build top layer first"},
+            {"layerHeight", "Layer thickness (blocks)"},
+            {"startAtLayer", "Start building at layer #"},
+            {"buildIgnoreExisting", "Re-check blocks already placed"},
+            {"buildRepeatCount", "Times to repeat the build"},
+            {"schematicOrientationX", "Mirror schematic on X"},
+            {"schematicOrientationZ", "Mirror schematic on Z"},
+            // following / avoidance
+            {"followRadius", "Follow distance (blocks)"},
+            {"avoidance", "Steer around mobs"},
+            {"mobAvoidanceRadius", "Mob avoidance radius (blocks)"},
+            // pathing behaviour
+            {"allowSprintToKeepDirection", "Keep sprinting through turns"},
+            {"sprintAscends", "Sprint up slopes"},
+            {"primaryTimeoutMS", "Pathfinding time budget (ms)"},
+            {"failureTimeoutMS", "Give-up time when stuck (ms)"},
+            // rendering / performance
+            {"renderPath", "Show the path line"},
+            {"renderGoal", "Show goal markers"},
+            {"renderGoalXZBeacon", "Show goal beacon beam"},
+            {"renderSelection", "Show area selections"},
+            {"renderCachedChunks", "Draw Baritone's cached chunks"},
+            {"pathRenderLineWidthPixels", "Path line thickness (px)"},
+            {"freeLook", "Free look (camera stays yours)"},
+            // interface / notifications
+            {"chatControl", "Accept chat commands"},
+            {"desktopNotifications", "Desktop notifications"},
+            {"notificationOnPathComplete", "Notify when a path finishes"},
+            {"notificationOnBuildFinished", "Notify when a build finishes"},
+            // this fork's GUI extras
+            {"selectionWand", "Selection wand enabled"},
+            {"selectionWandItem", "Selection wand item (id)"},
             {"guiHud", "Show job HUD overlay"},
     };
+
+    /** Lower-cased setting name -> short description, built from COMMON_SETTINGS. */
+    private static final Map<String, String> DESCRIPTIONS = new HashMap<>();
+
+    static {
+        for (String[] entry : COMMON_SETTINGS) {
+            DESCRIPTIONS.put(entry[0].toLowerCase(Locale.ROOT), entry[1]);
+        }
+    }
+
+    /** camelCase setting name -> "Camel case" fallback label for the long tail. */
+    private static String prettifyName(String name) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (i > 0 && Character.isUpperCase(c) && !Character.isUpperCase(name.charAt(i - 1))) {
+                sb.append(' ');
+                sb.append(Character.toLowerCase(c));
+            } else if (i == 0) {
+                sb.append(Character.toUpperCase(c));
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String labelFor(Settings.Setting<?> setting) {
+        return DESCRIPTIONS.getOrDefault(setting.getName().toLowerCase(Locale.ROOT), prettifyName(setting.getName()));
+    }
 
     private Tab tab = Tab.MINE;
 
@@ -109,16 +187,32 @@ public class BaritoneMenuScreen extends Screen {
     private String gotoX = "", gotoY = "", gotoZ = "";
     private String waypointName = "";
     private String farmRadius = "32";
-    private String subFrom = "", subTo = "";
-    private int ruleCategoryIndex = 0;
-    private String ruleTarget = "";
-    private int blockPickTarget = 0; // 0 = none, 1 = swap-from, 2 = swap-to, 3 = rule-target
+    private String areaFillBlock = ""; // fill/placement block chosen in the Area tab
+    private String areaReplaceFrom = ""; // block that Replace looks for and swaps out
+    private int blockPickTarget = 0; // 0 = none, 4 = area fill, 5 = area replace-from, 6 = wand item
     private String pickerSearch = "";
     private boolean restoreSearchFocus = false;
-    private File materialsFor = null; // schematic whose materials list is being shown
     private String statusMessage = "";
-    private int buildSubsLabelY = -1;
-    private List<String> materialsLines = null;
+
+
+    // Settings tab: search + paging over the full ~200-setting list
+    private String settingsSearch = "";
+    private int settingsPage = 0;
+    private String settingsPageInfo = "";
+    private int settingsLeftX = 0; // left edge of the settings list (set in init, used in render)
+    private final List<SettingRow> settingRows = new ArrayList<>();
+
+    /** A setting name label drawn next to its value control in the full list. */
+    private record SettingRow(String label, int y) {}
+
+    private static final int SETTINGS_PAGE_SIZE = 11;
+
+    // sensible items to offer as the selection wand (no-search default set)
+    private static final String[] WAND_PICKS = {
+            "blaze_rod", "stick", "bone", "feather", "breeze_rod",
+            "wooden_axe", "golden_hoe", "wooden_shovel", "brush", "clock",
+            "compass", "name_tag"
+    };
 
     private static final String[] COMMON_PICKS = {
             "cobblestone", "cobbled_deepslate", "stone", "stone_bricks", "bricks", "sandstone",
@@ -174,8 +268,8 @@ public class BaritoneMenuScreen extends Screen {
             case GOTO -> initGoto();
             case FOLLOW -> initFollow();
             case FARM -> initFarm();
-            case BUILD -> initBuild();
             case AREA -> initArea();
+            case CLIPBOARD -> initClipboard();
             case SETTINGS -> initSettings();
         }
 
@@ -254,6 +348,80 @@ public class BaritoneMenuScreen extends Screen {
                     gridLeft + (i % cols) * cell, gridTop + (i / cols) * cell, cell - 2, cell - 2,
                     Component.literal(id.getPath()), icon,
                     () -> onPick.accept(block));
+            btn.setTooltip(Tooltip.create(Component.literal(id.getPath().replace('_', ' '))));
+            this.addRenderableWidget(btn);
+        }
+    }
+
+    /** Picker sub-view for choosing the selection wand item. */
+    private void initItemPicker() {
+        int left = contentLeft();
+        int top = contentTop();
+
+        EditBox search = new EditBox(this.font, left, top, 190, 18, Component.literal("search"));
+        search.setHint(Component.literal("Search items for the wand..."));
+        search.setValue(pickerSearch);
+        search.setResponder(s -> {
+            pickerSearch = s;
+            restoreSearchFocus = true;
+            this.rebuildWidgets();
+        });
+        this.addRenderableWidget(search);
+        if (restoreSearchFocus) {
+            this.setInitialFocus(search);
+            restoreSearchFocus = false;
+        }
+
+        this.addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> {
+            blockPickTarget = 0;
+            this.rebuildWidgets();
+        }).bounds(left + 210, top - 1, 60, 20).build());
+
+        addItemGrid(pickerSearch, WAND_PICKS, top + 28, item -> {
+            String id = BuiltInRegistries.ITEM.getKey(item).getPath();
+            Settings settings = BaritoneAPI.getSettings();
+            settings.selectionWandItem.value = id;
+            SettingsUtil.save(settings);
+            blockPickTarget = 0;
+            pickerSearch = "";
+            statusMessage = "Wand item set to " + id;
+            this.rebuildWidgets();
+        });
+    }
+
+    /**
+     * A searchable grid of clickable item icons; the item counterpart of
+     * {@link #addBlockGrid}.
+     */
+    private void addItemGrid(String query, String[] pinned, int gridTop, java.util.function.Consumer<Item> onPick) {
+        List<Item> shown = new ArrayList<>();
+        String q = query.trim().toLowerCase(Locale.ROOT);
+        if (q.isEmpty()) {
+            for (String id : pinned) {
+                BuiltInRegistries.ITEM.getOptional(Identifier.withDefaultNamespace(id)).ifPresent(shown::add);
+            }
+        } else {
+            for (Identifier id : BuiltInRegistries.ITEM.keySet()) {
+                if (id.getPath().contains(q) && shown.size() < 32) {
+                    shown.add(BuiltInRegistries.ITEM.getValue(id));
+                }
+            }
+            shown.sort(Comparator.comparingInt(it -> BuiltInRegistries.ITEM.getKey(it).getPath().length()));
+        }
+
+        int cols = 12, cell = 24;
+        int gridLeft = this.width / 2 - (cols * cell) / 2;
+        for (int i = 0; i < Math.min(shown.size(), 36); i++) {
+            Item item = shown.get(i);
+            Identifier id = BuiltInRegistries.ITEM.getKey(item);
+            ItemStack icon = new ItemStack(item);
+            if (icon.isEmpty()) {
+                continue;
+            }
+            ItemButton btn = new ItemButton(
+                    gridLeft + (i % cols) * cell, gridTop + (i / cols) * cell, cell - 2, cell - 2,
+                    Component.literal(id.getPath()), icon,
+                    () -> onPick.accept(item));
             btn.setTooltip(Tooltip.create(Component.literal(id.getPath().replace('_', ' '))));
             this.addRenderableWidget(btn);
         }
@@ -399,117 +567,6 @@ public class BaritoneMenuScreen extends Screen {
         }).bounds(left + 70, top - 1, 110, 20).build());
     }
 
-    // ----------------------------------------------------------------- BUILD
-
-    private void initBuild() {
-        if (blockPickTarget != 0) {
-            initBlockPicker();
-            return;
-        }
-        if (materialsFor != null) {
-            initMaterialsList();
-            return;
-        }
-        int left = contentLeft();
-        int top = contentTop();
-
-        // supply chest management
-        int supplyCount = baritone().getWorldProvider().getCurrentWorld() == null ? 0
-                : baritone().getWorldProvider().getCurrentWorld().getWaypoints().getByTag(IWaypoint.Tag.SUPPLY).size();
-        this.addRenderableWidget(Button.builder(Component.literal("Mark supply chest (aim at it first)"), b -> markSupplyChest())
-                .bounds(left, top, 200, 20).build());
-        Button forget = Button.builder(Component.literal("Forget all (" + supplyCount + ")"), b -> forgetSupplyChests())
-                .bounds(left + 205, top, 85, 20).build();
-        forget.active = supplyCount > 0;
-        this.addRenderableWidget(forget);
-
-        File dir = new File(this.minecraft.gameDirectory, "schematics");
-        File[] files = dir.listFiles((d, n) -> {
-            String l = n.toLowerCase(Locale.ROOT);
-            return l.endsWith(".schem") || l.endsWith(".schematic") || l.endsWith(".litematic") || l.endsWith(".nbt");
-        });
-        int rowY = top + 26;
-        if (files == null || files.length == 0) {
-            statusMessage = "No schematics found in " + dir.getPath();
-        } else {
-            int maxFileRows = 3;
-            for (int i = 0; i < Math.min(files.length, maxFileRows); i++) {
-                File f = files[i];
-                this.addRenderableWidget(Button.builder(Component.literal("Build " + f.getName()), b -> {
-                    BetterBlockPos feet = baritone().getPlayerContext().playerFeet();
-                    baritone().getBuilderProcess().build(f.getName(), f, feet);
-                    this.onClose();
-                }).bounds(left, rowY, 185, 20).build());
-                this.addRenderableWidget(Button.builder(Component.literal("List"), b -> {
-                    materialsFor = f;
-                    materialsLines = null;
-                    this.rebuildWidgets();
-                }).bounds(left + 190, rowY, 50, 20).build());
-                rowY += 22;
-            }
-        }
-
-        // block substitutions ("schematic wants X, place Y instead")
-        int subTop = rowY + 16;
-        buildSubsLabelY = subTop - 11;
-
-        this.addRenderableWidget(Button.builder(Component.literal(subFrom.isEmpty() ? "schematic block..." : subFrom), b -> openPicker(1))
-                .bounds(left, subTop, 105, 20).build());
-
-        this.addRenderableWidget(Button.builder(Component.literal(subTo.isEmpty() ? "place instead..." : subTo), b -> openPicker(2))
-                .bounds(left + 110, subTop, 105, 20).build());
-
-        this.addRenderableWidget(Button.builder(Component.literal("Add swap"), b -> addSubstitution())
-                .bounds(left + 220, subTop, 70, 20).build());
-
-        // category fallback rules: "any stairs I'm missing -> cobblestone_stairs"
-        String category = baritone.utils.schematic.CategorySubstitutions.CATEGORIES[ruleCategoryIndex];
-        int ruleTop = subTop + 23;
-        this.addRenderableWidget(Button.builder(Component.literal("Any: " + category), b -> {
-            ruleCategoryIndex = (ruleCategoryIndex + 1) % baritone.utils.schematic.CategorySubstitutions.CATEGORIES.length;
-            this.rebuildWidgets();
-        }).bounds(left, ruleTop, 105, 20).build());
-
-        this.addRenderableWidget(Button.builder(Component.literal(ruleTarget.isEmpty() ? "fallback block..." : ruleTarget), b -> openPicker(3))
-                .bounds(left + 110, ruleTop, 105, 20).build());
-
-        this.addRenderableWidget(Button.builder(Component.literal("Add rule"), b -> addCategoryRule())
-                .bounds(left + 220, ruleTop, 70, 20).build());
-
-        Settings settings = BaritoneAPI.getSettings();
-        int swapY = ruleTop + 24;
-
-        for (String rule : settings.guiSubstitutionRules.value) {
-            if (swapY > this.height - 52) {
-                break;
-            }
-            String[] parts = rule.split("->", 2);
-            String label = parts.length == 2
-                    ? "any " + parts[0] + " (" + baritone.utils.schematic.CategorySubstitutions.count(parts[0]) + " blocks) -> " + parts[1]
-                    : rule;
-            final String toRemove = rule;
-            this.addRenderableWidget(Button.builder(
-                    Component.literal(label + "   [click to remove]"),
-                    b -> removeCategoryRule(toRemove)).bounds(left, swapY, 290, 18).build());
-            swapY += 21;
-        }
-
-        for (Map.Entry<Block, List<Block>> entry : settings.buildSubstitutes.value.entrySet()) {
-            for (Block target : entry.getValue()) {
-                if (swapY > this.height - 52) {
-                    break;
-                }
-                String fromName = BuiltInRegistries.BLOCK.getKey(entry.getKey()).getPath();
-                String toName = BuiltInRegistries.BLOCK.getKey(target).getPath();
-                final Block fromBlock = entry.getKey(), toBlock = target;
-                this.addRenderableWidget(Button.builder(
-                        Component.literal(fromName + " -> " + toName + "   [click to remove]"),
-                        b -> removeSubstitution(fromBlock, toBlock)).bounds(left, swapY, 290, 18).build());
-                swapY += 21;
-            }
-        }
-    }
-
     private void openPicker(int target) {
         blockPickTarget = target;
         pickerSearch = "";
@@ -517,93 +574,7 @@ public class BaritoneMenuScreen extends Screen {
         this.rebuildWidgets();
     }
 
-    private void markSupplyChest() {
-        if (this.minecraft == null || !(this.minecraft.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit)) {
-            statusMessage = "Aim at a chest, then reopen the menu and click this.";
-            return;
-        }
-        net.minecraft.core.BlockPos pos = hit.getBlockPos();
-        if (this.minecraft.level == null
-                || !(this.minecraft.level.getBlockEntity(pos) instanceof net.minecraft.world.Container)) {
-            statusMessage = "That block isn't a container. Aim at a chest or barrel.";
-            return;
-        }
-        IWaypointCollection waypoints = waypoints();
-        if (waypoints == null) {
-            statusMessage = "No world loaded";
-            return;
-        }
-        waypoints.addWaypoint(new Waypoint("supply", IWaypoint.Tag.SUPPLY,
-                new BetterBlockPos(pos.getX(), pos.getY(), pos.getZ())));
-        statusMessage = "Marked supply chest at " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ();
-        this.rebuildWidgets();
-    }
-
-    private void forgetSupplyChests() {
-        IWaypointCollection waypoints = waypoints();
-        if (waypoints == null) {
-            return;
-        }
-        for (IWaypoint wp : new ArrayList<>(waypoints.getByTag(IWaypoint.Tag.SUPPLY))) {
-            waypoints.removeWaypoint(wp);
-        }
-        this.rebuildWidgets();
-    }
-
-    private void initMaterialsList() {
-        buildSubsLabelY = -1;
-        int left = contentLeft();
-        int top = contentTop();
-        this.addRenderableWidget(Button.builder(Component.literal("< Back"), b -> {
-            materialsFor = null;
-            materialsLines = null;
-            this.rebuildWidgets();
-        }).bounds(left, top, 60, 20).build());
-
-        if (materialsLines == null) {
-            materialsLines = computeMaterials(materialsFor);
-        }
-    }
-
-    private List<String> computeMaterials(File file) {
-        Map<Block, Integer> counts = baritone.utils.schematic.SchematicMaterials.count(file);
-        List<String> lines = new ArrayList<>();
-        if (counts == null) {
-            lines.add("Could not read " + file.getName());
-            return lines;
-        }
-        lines.add(file.getName() + " needs:");
-        int shown = 0;
-        for (Map.Entry<Block, Integer> entry : counts.entrySet()) {
-            if (shown++ >= 16) {
-                lines.add("...and " + (counts.size() - 16) + " more block types");
-                break;
-            }
-            String name = BuiltInRegistries.BLOCK.getKey(entry.getKey()).getPath();
-            int need = entry.getValue();
-            int have = countInInventory(entry.getKey());
-            int shortBy = Math.max(0, need - have);
-            String status = shortBy == 0 ? " (have enough)" : " - short " + shortBy + " (" + ((need + 63) / 64) + " stacks total)";
-            lines.add("  " + need + "x " + name + status);
-        }
-        return lines;
-    }
-
-    private int countInInventory(Block block) {
-        if (this.minecraft == null || this.minecraft.player == null) {
-            return 0;
-        }
-        int total = 0;
-        for (ItemStack stack : this.minecraft.player.getInventory().getNonEquipmentItems()) {
-            if (!stack.isEmpty() && stack.getItem() instanceof net.minecraft.world.item.BlockItem bi && bi.getBlock() == block) {
-                total += stack.getCount();
-            }
-        }
-        return total;
-    }
-
     private void initBlockPicker() {
-        buildSubsLabelY = -1;
         int left = contentLeft();
         int top = contentTop();
 
@@ -629,9 +600,8 @@ public class BaritoneMenuScreen extends Screen {
         addBlockGrid(pickerSearch, COMMON_PICKS, top + 28, block -> {
             String path = BuiltInRegistries.BLOCK.getKey(block).getPath();
             switch (blockPickTarget) {
-                case 1 -> subFrom = path;
-                case 2 -> subTo = path;
-                case 3 -> ruleTarget = path;
+                case 4 -> areaFillBlock = path;
+                case 5 -> areaReplaceFrom = path;
             }
             blockPickTarget = 0;
             pickerSearch = "";
@@ -639,105 +609,35 @@ public class BaritoneMenuScreen extends Screen {
         });
     }
 
-    private void addCategoryRule() {
-        Block target = findBlock(ruleTarget);
-        if (target == null) {
-            statusMessage = "Unknown block name: " + ruleTarget;
-            return;
-        }
-        String category = baritone.utils.schematic.CategorySubstitutions.CATEGORIES[ruleCategoryIndex];
-        String rule = category + "->" + BuiltInRegistries.BLOCK.getKey(target).getPath();
-        Settings settings = BaritoneAPI.getSettings();
-        List<String> rules = new ArrayList<>(settings.guiSubstitutionRules.value);
-        if (!rules.contains(rule)) {
-            rules.add(rule);
-        }
-        settings.guiSubstitutionRules.value = rules;
-        SettingsUtil.save(settings);
-        ruleTarget = "";
-        statusMessage = "";
-        this.rebuildWidgets();
-    }
-
-    private void removeCategoryRule(String rule) {
-        Settings settings = BaritoneAPI.getSettings();
-        List<String> rules = new ArrayList<>(settings.guiSubstitutionRules.value);
-        rules.remove(rule);
-        settings.guiSubstitutionRules.value = rules;
-        SettingsUtil.save(settings);
-        this.rebuildWidgets();
-    }
-
-    private Block findBlock(String raw) {
-        String name = raw.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
-        if (name.startsWith("minecraft:")) {
-            name = name.substring("minecraft:".length());
-        }
-        if (name.isEmpty()) {
-            return null;
-        }
-        return BuiltInRegistries.BLOCK.getOptional(Identifier.withDefaultNamespace(name)).orElse(null);
-    }
-
-    private void addSubstitution() {
-        Block fromBlock = findBlock(subFrom);
-        Block toBlock = findBlock(subTo);
-        if (fromBlock == null || toBlock == null) {
-            statusMessage = "Unknown block name: " + (fromBlock == null ? subFrom : subTo);
-            return;
-        }
-        Settings settings = BaritoneAPI.getSettings();
-        Map<Block, List<Block>> copy = deepCopySubstitutes(settings.buildSubstitutes.value);
-        List<Block> targets = copy.computeIfAbsent(fromBlock, k -> new ArrayList<>());
-        if (!targets.contains(toBlock)) {
-            targets.add(toBlock);
-        }
-        settings.buildSubstitutes.value = copy;
-        SettingsUtil.save(settings);
-        subFrom = "";
-        subTo = "";
-        statusMessage = "";
-        this.rebuildWidgets();
-    }
-
-    private void removeSubstitution(Block fromBlock, Block toBlock) {
-        Settings settings = BaritoneAPI.getSettings();
-        Map<Block, List<Block>> copy = deepCopySubstitutes(settings.buildSubstitutes.value);
-        List<Block> targets = copy.get(fromBlock);
-        if (targets != null) {
-            targets.remove(toBlock);
-            if (targets.isEmpty()) {
-                copy.remove(fromBlock);
-            }
-        }
-        settings.buildSubstitutes.value = copy;
-        SettingsUtil.save(settings);
-        this.rebuildWidgets();
-    }
-
-    private static Map<Block, List<Block>> deepCopySubstitutes(Map<Block, List<Block>> map) {
-        Map<Block, List<Block>> copy = new java.util.HashMap<>();
-        for (Map.Entry<Block, List<Block>> entry : map.entrySet()) {
-            copy.put(entry.getKey(), new ArrayList<>(entry.getValue()));
-        }
-        return copy;
-    }
-
     // ------------------------------------------------------------------ AREA
 
+    // fill shapes offered as buttons: {sel action, button label}
+    private static final String[][] AREA_SHAPES = {
+            {"set", "Fill solid"},
+            {"walls", "Walls"},
+            {"shell", "Shell"},
+            {"sphere", "Sphere"},
+            {"hsphere", "Hollow sphere"},
+            {"cylinder", "Cylinder"},
+            {"hcylinder", "Hollow cyl."},
+    };
+
     private void initArea() {
+        if (blockPickTarget == 6) {
+            initItemPicker();
+            return;
+        }
+        if (blockPickTarget != 0) {
+            initBlockPicker();
+            return;
+        }
         int left = contentLeft();
         int top = contentTop();
 
         this.addRenderableWidget(Button.builder(Component.literal("Corner 1 = here"), b -> runCommandKeepOpen("sel pos1"))
-                .bounds(left, top, 95, 20).build());
+                .bounds(left, top, 145, 20).build());
         this.addRenderableWidget(Button.builder(Component.literal("Corner 2 = here"), b -> runCommandKeepOpen("sel pos2"))
-                .bounds(left + 100, top, 95, 20).build());
-        this.addRenderableWidget(Button.builder(Component.literal("Pick by clicking"), b -> {
-            if (this.minecraft != null) {
-                this.minecraft.gui.setScreen(new baritone.utils.GuiClick());
-            }
-        }).bounds(left + 200, top, 100, 20).build());
+                .bounds(left + 150, top, 145, 20).build());
 
         boolean hasSelection = baritone().getSelectionManager().getSelections().length > 0;
 
@@ -750,11 +650,168 @@ public class BaritoneMenuScreen extends Screen {
                 .bounds(left + 150, top + 24, 70, 20).build();
         deselect.active = hasSelection;
         this.addRenderableWidget(deselect);
+
+        // wand item picker (icon of the current wand item; click to change)
+        Item wand = baritone.utils.SelectionWand.wandItem();
+        ItemStack wandIcon = new ItemStack(wand);
+        if (!wandIcon.isEmpty()) {
+            ItemButton wandBtn = new ItemButton(left + 278, top + 24, 20, 20,
+                    Component.literal("wand item"), wandIcon, () -> openPicker(6));
+            wandBtn.setTooltip(Tooltip.create(Component.literal(
+                    "Wand item: " + BuiltInRegistries.ITEM.getKey(wand).getPath() + "  (click to change)")));
+            this.addRenderableWidget(wandBtn);
+        }
+
+        // fill block picker + shape buttons
+        this.addRenderableWidget(Button.builder(
+                Component.literal(areaFillBlock.isEmpty() ? "Choose fill block..." : "Fill block: " + areaFillBlock),
+                b -> openPicker(4)).bounds(left, top + 52, 300, 20).build());
+
+        boolean canFill = hasSelection && !areaFillBlock.isEmpty();
+        int gridTop = top + 76;
+        for (int i = 0; i < AREA_SHAPES.length; i++) {
+            final String action = AREA_SHAPES[i][0];
+            int col = i % 3, row = i / 3;
+            Button shape = Button.builder(Component.literal(AREA_SHAPES[i][1]),
+                    b -> runCommand("sel " + action + " " + areaFillBlock))
+                    .bounds(left + col * 102, gridTop + row * 22, 97, 20).build();
+            shape.active = canFill;
+            this.addRenderableWidget(shape);
+        }
+
+        // Replace: swap one existing block for the fill block, everything else untouched
+        int replaceTop = gridTop + ((AREA_SHAPES.length + 2) / 3) * 22 + 4;
+        this.addRenderableWidget(Button.builder(
+                Component.literal(areaReplaceFrom.isEmpty() ? "Replace which block..." : "Replace: " + areaReplaceFrom),
+                b -> openPicker(5)).bounds(left, replaceTop, 195, 20).build());
+        Button replace = Button.builder(Component.literal("Replace → fill"),
+                b -> runCommand("sel replace " + areaReplaceFrom + " " + areaFillBlock))
+                .bounds(left + 200, replaceTop, 100, 20).build();
+        replace.active = canFill && !areaReplaceFrom.isEmpty();
+        this.addRenderableWidget(replace);
     }
 
     private void runCommandKeepOpen(String command) {
         baritone().getCommandManager().execute(command);
         this.rebuildWidgets();
+    }
+
+    // --------------------------------------------------------------- CLIPBOARD
+
+    private void initClipboard() {
+        int left = contentLeft();
+        int top = contentTop();
+
+        if (baritone.utils.ClipboardGhost.isPlacing()) {
+            // placement mode: nudge / rotate / mirror the ghost, then build
+            addNudgeButton("Move West (X-)", -1, 0, 0, left, top);
+            addNudgeButton("Move East (X+)", 1, 0, 0, left + 150, top);
+            addNudgeButton("Move North (Z-)", 0, 0, -1, left, top + 24);
+            addNudgeButton("Move South (Z+)", 0, 0, 1, left + 150, top + 24);
+            addNudgeButton("Move Down", 0, -1, 0, left, top + 48);
+            addNudgeButton("Move Up", 0, 1, 0, left + 150, top + 48);
+
+            this.addRenderableWidget(Button.builder(Component.literal("Rotate 90°"), b -> {
+                baritone.utils.ClipboardGhost.rotateCW();
+                this.rebuildWidgets();
+            }).bounds(left, top + 72, 145, 20).build());
+            this.addRenderableWidget(Button.builder(
+                    Component.literal("Mirror: " + mirrorName(baritone.utils.ClipboardGhost.mirror())), b -> {
+                        baritone.utils.ClipboardGhost.cycleMirror();
+                        this.rebuildWidgets();
+                    }).bounds(left + 150, top + 72, 145, 20).build());
+
+            this.addRenderableWidget(Button.builder(
+                    Component.literal("Build here").copy().withStyle(ChatFormatting.GREEN), b -> {
+                        baritone.utils.ClipboardGhost.build();
+                        this.onClose();
+                    }).bounds(left, top + 100, 145, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> {
+                baritone.utils.ClipboardGhost.cancel();
+                this.rebuildWidgets();
+            }).bounds(left + 150, top + 100, 145, 20).build());
+            return;
+        }
+
+        boolean hasSelection = baritone().getSelectionManager().getSelections().length > 0;
+        boolean hasContent = baritone.utils.ClipboardGhost.hasContent();
+
+        Button copy = Button.builder(Component.literal("Copy selection"), b -> {
+            baritone().getCommandManager().execute("sel copy");
+            this.rebuildWidgets();
+        }).bounds(left, top, 145, 20).build();
+        copy.active = hasSelection;
+        this.addRenderableWidget(copy);
+
+        Button cut = Button.builder(Component.literal("Cut selection").copy().withStyle(ChatFormatting.RED), b -> {
+            baritone().getCommandManager().execute("sel copy");
+            baritone().getCommandManager().execute("sel cleararea");
+            this.rebuildWidgets();
+        }).bounds(left + 150, top, 145, 20).build();
+        cut.active = hasSelection;
+        this.addRenderableWidget(cut);
+
+        Button place = Button.builder(Component.literal("Place paste (ghost)"), b -> {
+            baritone.utils.ClipboardGhost.startPlacing(baritone().getPlayerContext().playerFeet());
+            this.rebuildWidgets();
+        }).bounds(left, top + 24, 145, 20).build();
+        place.active = hasContent;
+        this.addRenderableWidget(place);
+
+        Button clear = Button.builder(Component.literal("Clear clipboard"), b -> {
+            baritone.utils.ClipboardGhost.clearClipboard();
+            this.rebuildWidgets();
+        }).bounds(left + 150, top + 24, 145, 20).build();
+        clear.active = hasContent;
+        this.addRenderableWidget(clear);
+    }
+
+    private void addNudgeButton(String label, int dx, int dy, int dz, int x, int y) {
+        this.addRenderableWidget(Button.builder(Component.literal(label), b -> {
+            baritone.utils.ClipboardGhost.nudge(dx, dy, dz);
+            this.rebuildWidgets();
+        }).bounds(x, y, 145, 20).build());
+    }
+
+    private static String mirrorName(net.minecraft.world.level.block.Mirror m) {
+        return m == net.minecraft.world.level.block.Mirror.NONE ? "off"
+                : m == net.minecraft.world.level.block.Mirror.FRONT_BACK ? "front-back" : "left-right";
+    }
+
+    private static String rotationName(net.minecraft.world.level.block.Rotation r) {
+        return r == net.minecraft.world.level.block.Rotation.NONE ? "0°"
+                : r == net.minecraft.world.level.block.Rotation.CLOCKWISE_90 ? "90°"
+                : r == net.minecraft.world.level.block.Rotation.CLOCKWISE_180 ? "180°" : "270°";
+    }
+
+    private List<String> clipboardInfoLines() {
+        List<String> lines = new ArrayList<>();
+        boolean hasSelection = baritone().getSelectionManager().getSelections().length > 0;
+        if (baritone.utils.ClipboardGhost.isPlacing()) {
+            net.minecraft.core.BlockPos p = baritone.utils.ClipboardGhost.placePos();
+            lines.add("Placing paste - the blue ghost shows exactly where it will build.");
+            lines.add("Close this menu (B) to see it clearly; reopen to keep adjusting.");
+            if (p != null) {
+                lines.add("Corner: (" + p.getX() + ", " + p.getY() + ", " + p.getZ() + ")    "
+                        + "Rotation: " + rotationName(baritone.utils.ClipboardGhost.rotation())
+                        + "    Mirror: " + mirrorName(baritone.utils.ClipboardGhost.mirror()));
+            }
+            lines.add("Nudge / Rotate / Mirror above, then \"Build here\" to start building.");
+            if (!BaritoneAPI.getSettings().allowPlace.value) {
+                lines.add("Warning: \"Place blocks\" is OFF in Settings - building needs it.");
+            }
+        } else if (!baritone.utils.ClipboardGhost.hasContent()) {
+            if (!hasSelection) {
+                lines.add("Nothing copied yet. Make a selection in the Area tab, then Copy or Cut here.");
+            } else {
+                lines.add("Copy or Cut your selection to put it on the clipboard.");
+            }
+            lines.add("Cut = Copy then dig the area out (needs \"Break blocks\" on).");
+        } else {
+            lines.add("Clipboard ready. Hit \"Place paste (ghost)\" to drop a preview you can");
+            lines.add("nudge, rotate and mirror before building, or \"Clear clipboard\" to discard it.");
+        }
+        return lines;
     }
 
     private List<String> areaInfoLines() {
@@ -763,8 +820,7 @@ public class BaritoneMenuScreen extends Screen {
         if (selections.length == 0) {
             lines.add("No area selected yet.");
             lines.add("Stand on a corner and press \"Corner 1 = here\", walk to the opposite");
-            lines.add("corner and press \"Corner 2 = here\" - or use \"Pick by clicking\" and");
-            lines.add("drag from one block to another, then press B to come back here.");
+            lines.add("corner and press \"Corner 2 = here\" - or hold the wand and left/right-click.");
         } else {
             for (baritone.api.selection.ISelection sel : selections) {
                 BetterBlockPos min = sel.min(), max = sel.max();
@@ -772,8 +828,18 @@ public class BaritoneMenuScreen extends Screen {
                 lines.add("Selected: (" + min.x + ", " + min.y + ", " + min.z + ") to (" + max.x + ", " + max.y + ", " + max.z + ")"
                         + "  -  " + dx + " x " + dy + " x " + dz + " = " + (dx * (long) dy * dz) + " blocks");
             }
+            if (areaFillBlock.isEmpty()) {
+                lines.add("Pick a fill block to enable Fill / Walls / Shell / Sphere / Cylinder.");
+            } else {
+                lines.add("Fill block: " + areaFillBlock + " - shapes build inside the selection.");
+                lines.add("Replace swaps only \"" + (areaReplaceFrom.isEmpty() ? "(pick a block)" : areaReplaceFrom)
+                        + "\" for " + areaFillBlock + ", leaving everything else.");
+            }
             if (!BaritoneAPI.getSettings().allowBreak.value) {
                 lines.add("Warning: \"Break blocks\" is OFF in Settings - clearing needs it.");
+            }
+            if (!areaFillBlock.isEmpty() && !BaritoneAPI.getSettings().allowPlace.value) {
+                lines.add("Warning: \"Place blocks\" is OFF in Settings - filling needs it.");
             }
         }
         return lines;
@@ -781,26 +847,129 @@ public class BaritoneMenuScreen extends Screen {
 
     // -------------------------------------------------------------- SETTINGS
 
+    // Settings tab layout: a wide single-column list (description on the left,
+    // value control on the right). Width adapts to the (scaled) screen so it
+    // never runs off the edge.
+    private static final int SETTINGS_CTRL_W = 100;
+
     private void initSettings() {
         Settings settings = BaritoneAPI.getSettings();
-        int left = contentLeft();
         int top = contentTop();
-        int i = 0;
-        for (String[] entry : TOGGLE_SETTINGS) {
-            Settings.Setting<?> raw = settings.byLowerName.get(entry[0].toLowerCase(Locale.ROOT));
-            if (raw == null || !(raw.value instanceof Boolean)) {
-                continue;
-            }
-            @SuppressWarnings("unchecked")
-            Settings.Setting<Boolean> setting = (Settings.Setting<Boolean>) raw;
-            int col = i % 2, row = i / 2;
-            this.addRenderableWidget(CycleButton.onOffBuilder(setting.value)
-                    .create(left + col * 155, top + row * 24, 150, 20, Component.literal(entry[1]), (btn, val) -> {
-                        setting.value = val;
-                        SettingsUtil.save(settings);
-                    }));
-            i++;
+        int listWidth = Math.min(480, this.width - 40);
+        int left = (this.width - listWidth) / 2;
+        int ctrlX = left + listWidth - SETTINGS_CTRL_W;
+        settingsLeftX = left;
+        settingRows.clear();
+        settingsPageInfo = "";
+
+        EditBox search = new EditBox(this.font, left, top, listWidth, 18, Component.literal("search"));
+        search.setHint(Component.literal("Search settings (e.g. \"break\", \"layer\", \"render\")..."));
+        search.setValue(settingsSearch);
+        search.setResponder(s -> {
+            settingsSearch = s;
+            settingsPage = 0;
+            restoreSearchFocus = true;
+            this.rebuildWidgets();
+        });
+        this.addRenderableWidget(search);
+        if (restoreSearchFocus) {
+            this.setInitialFocus(search);
+            restoreSearchFocus = false;
         }
+
+        // Build the display order: curated common settings first, then the rest
+        // alphabetically. Then filter by the search box (matching name OR label).
+        List<Settings.Setting<?>> ordered = orderedSettings(settings);
+        String query = settingsSearch.toLowerCase(Locale.ROOT);
+        List<Settings.Setting<?>> matches = new ArrayList<>();
+        for (Settings.Setting<?> s : ordered) {
+            if (query.isEmpty()
+                    || s.getName().toLowerCase(Locale.ROOT).contains(query)
+                    || labelFor(s).toLowerCase(Locale.ROOT).contains(query)) {
+                matches.add(s);
+            }
+        }
+
+        int totalPages = Math.max(1, (matches.size() + SETTINGS_PAGE_SIZE - 1) / SETTINGS_PAGE_SIZE);
+        settingsPage = Math.max(0, Math.min(settingsPage, totalPages - 1));
+        int startIdx = settingsPage * SETTINGS_PAGE_SIZE;
+        int endIdx = Math.min(matches.size(), startIdx + SETTINGS_PAGE_SIZE);
+
+        int rowY = top + 26;
+        for (int idx = startIdx; idx < endIdx; idx++) {
+            Settings.Setting<?> s = matches.get(idx);
+            settingRows.add(new SettingRow(labelFor(s), rowY + 6));
+            if (s.value instanceof Boolean) {
+                @SuppressWarnings("unchecked")
+                Settings.Setting<Boolean> bs = (Settings.Setting<Boolean>) s;
+                this.addRenderableWidget(CycleButton.onOffBuilder(bs.value).displayOnlyValue()
+                        .create(ctrlX, rowY, SETTINGS_CTRL_W, 20, Component.literal(labelFor(s)), (btn, val) -> {
+                            bs.value = val;
+                            SettingsUtil.save(settings);
+                        }));
+            } else {
+                String current;
+                try {
+                    current = SettingsUtil.settingValueToString(s);
+                } catch (Exception e) {
+                    current = "";
+                }
+                EditBox box = new EditBox(this.font, ctrlX, rowY + 1, SETTINGS_CTRL_W, 18, Component.literal(labelFor(s)));
+                box.setMaxLength(512);
+                box.setValue(current);
+                final String name = s.getName();
+                // set the responder AFTER setValue so populating the field
+                // doesn't re-apply/save during rebuild
+                box.setResponder(v -> {
+                    try {
+                        SettingsUtil.parseAndApply(settings, name, v.trim());
+                        SettingsUtil.save(settings);
+                    } catch (Exception ignored) {
+                        // partial or invalid input; keep the old value until it parses
+                    }
+                });
+                this.addRenderableWidget(box);
+            }
+            rowY += 22;
+        }
+
+        int barY = top + 26 + SETTINGS_PAGE_SIZE * 22 + 4;
+        Button prev = Button.builder(Component.literal("< Prev"), b -> {
+            settingsPage--;
+            this.rebuildWidgets();
+        }).bounds(left, barY, 60, 20).build();
+        prev.active = settingsPage > 0;
+        this.addRenderableWidget(prev);
+
+        Button next = Button.builder(Component.literal("Next >"), b -> {
+            settingsPage++;
+            this.rebuildWidgets();
+        }).bounds(left + listWidth - 60, barY, 60, 20).build();
+        next.active = settingsPage < totalPages - 1;
+        this.addRenderableWidget(next);
+
+        settingsPageInfo = "Page " + (settingsPage + 1) + " / " + totalPages + "   (" + matches.size() + " shown)";
+    }
+
+    /** All editable settings, common ones first (in curated order) then A-Z. */
+    private static List<Settings.Setting<?>> orderedSettings(Settings settings) {
+        List<Settings.Setting<?>> ordered = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (String[] entry : COMMON_SETTINGS) {
+            Settings.Setting<?> s = settings.byLowerName.get(entry[0].toLowerCase(Locale.ROOT));
+            if (s != null && !SettingsUtil.javaOnlySetting(s) && seen.add(s.getName())) {
+                ordered.add(s);
+            }
+        }
+        List<Settings.Setting<?>> rest = new ArrayList<>();
+        for (Settings.Setting<?> s : settings.allSettings) {
+            if (!SettingsUtil.javaOnlySetting(s) && !seen.contains(s.getName())) {
+                rest.add(s);
+            }
+        }
+        rest.sort((a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+        ordered.addAll(rest);
+        return ordered;
     }
 
     // ------------------------------------------------------------- rendering
@@ -815,23 +984,31 @@ public class BaritoneMenuScreen extends Screen {
             extractor.centeredText(this.font, Component.literal(statusMessage), this.width / 2, this.height - 44, 0xFFFFAA55);
         }
 
-        if (this.tab == Tab.AREA) {
-            int y = contentTop() + 54;
+        if (this.tab == Tab.AREA && blockPickTarget == 0) {
+            int y = contentTop() + 172;
             for (String line : areaInfoLines()) {
                 extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
                 y += 11;
             }
         }
 
-        if (this.tab == Tab.BUILD && materialsFor != null && materialsLines != null) {
-            int y = contentTop() + 28;
-            for (String line : materialsLines) {
+        if (this.tab == Tab.CLIPBOARD) {
+            int y = contentTop() + (baritone.utils.ClipboardGhost.isPlacing() ? 128 : 56);
+            for (String line : clipboardInfoLines()) {
                 extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
                 y += 11;
             }
-        } else if (this.tab == Tab.BUILD && buildSubsLabelY > 0) {
-            extractor.text(this.font, "Substitutions - if the schematic wants the left block, place the right one:",
-                    contentLeft(), buildSubsLabelY, 0xFFDDDDDD, true);
+        }
+
+
+        if (this.tab == Tab.SETTINGS) {
+            for (SettingRow r : settingRows) {
+                extractor.text(this.font, r.label(), settingsLeftX, r.y(), 0xFFDDDDDD, true);
+            }
+            if (!settingsPageInfo.isEmpty()) {
+                extractor.text(this.font, settingsPageInfo,
+                        settingsLeftX + 70, contentTop() + 26 + SETTINGS_PAGE_SIZE * 22 + 10, 0xFFBBBBBB, true);
+            }
         }
 
         // status bar: what's baritone doing right now

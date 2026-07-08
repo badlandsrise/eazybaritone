@@ -55,5 +55,7 @@ public class SelectionRenderer implements IRenderer, AbstractGameEventListener {
     @Override
     public void onRenderPass(RenderEvent event) {
         renderSelections(event.getModelViewStack(), manager.getSelections());
+        baritone.utils.SelectionWand.render(event.getModelViewStack());
+        baritone.utils.ClipboardGhost.render(event.getModelViewStack());
     }
 }
