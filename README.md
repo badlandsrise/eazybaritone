@@ -1,6 +1,6 @@
-# Baritone — Minecraft 26.2 fork (with a GUI)
+# EazyBaritone
 
-A fork of [Baritone](https://github.com/cabaletta/baritone) updated to run on **Minecraft 26.2**, with an in-game menu bolted on so you don't have to memorize chat commands to use it.
+A fork of [Baritone](https://github.com/cabaletta/baritone) updated to run on **Minecraft 26.2**, with an in-game menu bolted on so you don't have to memorize chat commands to use it. Named to distinguish it from the original — all the pathfinding is Baritone's; the GUI is the "eazy" part.
 
 Baritone is the pathfinding and automation engine behind a lot of Minecraft tools — it can walk you to coordinates, mine ore, build schematics, farm, follow entities, and fill/clear regions. This fork keeps all of that intact and adds a point-and-click interface on top for people who don't want to live in the chat box.
 

@@ -24,19 +24,8 @@ allprojects {
         archivesName = rootProject.archives_base_name
     }
 
-    def vers = ""
-    try {
-        vers = 'git describe --always --tags --first-parent --dirty'.execute().text.trim()
-    } catch (Exception e) {
-        println "Version detection failed: " + e
-    }
-    if (!vers.startsWith("v")) {
-        println "using version number: " + rootProject.mod_version
-        version = rootProject.mod_version
-    } else {
-        version = vers.substring(1)
-        println "Detected version " + version
-    }
+    // This fork sets an explicit mod_version (gradle.properties) rather than deriving it from git tags.
+    version = rootProject.mod_version
     group = rootProject.maven_group
 
     java {
