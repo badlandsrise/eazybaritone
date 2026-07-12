@@ -15,8 +15,21 @@
  * along with Baritone.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package baritone.launch;import net.minecraftforge.fml.common.Mod;
+package baritone.launch.mixins;
 
-@Mod("baritoe")
-public class BaritoneForgeModXD {
+import baritone.utils.accessor.IMinecraftAccessor;
+import net.minecraft.client.Minecraft;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.gen.Invoker;
+
+@Mixin(Minecraft.class)
+public abstract class MixinMinecraftAccessor implements IMinecraftAccessor {
+
+    @Invoker("startAttack")
+    @Override
+    public abstract boolean callStartAttack();
+
+    @Invoker("startUseItem")
+    @Override
+    public abstract void callStartUseItem();
 }

@@ -92,13 +92,34 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private int numRepeats;
     private List<BlockState> approxPlaceable;
     public int stopAtHeight = 0;
+    private Boolean forceBuildInLayers; // null = use Baritone.settings().buildInLayers.value
+    private Boolean forceLayerOrder;    // null = use Baritone.settings().layerOrder.value
 
     public BuilderProcess(Baritone baritone) {
         super(baritone);
     }
 
+    private boolean useBuildInLayers() {
+        return forceBuildInLayers != null ? forceBuildInLayers : Baritone.settings().buildInLayers.value;
+    }
+
+    private boolean useLayerOrder() {
+        return forceLayerOrder != null ? forceLayerOrder : Baritone.settings().layerOrder.value;
+    }
+
+    @Override
+    public void setLayerOverride(Boolean inLayers, Boolean topDown) {
+        this.forceBuildInLayers = inLayers;
+        this.forceLayerOrder = topDown;
+    }
+
     @Override
     public void build(String name, ISchematic schematic, Vec3i origin) {
+        // A fresh build starts from the global layer settings; callers that want a
+        // per-build override (e.g. SelCommand) apply it right AFTER this call so an
+        // interrupted sel build can never leak its override onto a later job.
+        this.forceBuildInLayers = null;
+        this.forceLayerOrder = null;
         this.name = name;
         this.schematic = schematic;
         this.realSchematic = null;
@@ -143,12 +164,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             if (baritone.getSelectionManager().getSelections().length == 0) {
                 logDirect("Poor little kitten forgot to set a selection while BuildOnlySelection is true");
                 this.stopAtHeight = 0;
-            } else if (Baritone.settings().buildInLayers.value) {
+            } else if (useBuildInLayers()) {
                 OptionalInt minim = Stream.of(baritone.getSelectionManager().getSelections()).mapToInt(sel -> sel.min().y).min();
                 OptionalInt maxim = Stream.of(baritone.getSelectionManager().getSelections()).mapToInt(sel -> sel.max().y).max();
                 if (minim.isPresent() && maxim.isPresent()) {
-                    int startAtHeight = Baritone.settings().layerOrder.value ? y + schematic.heightY() - maxim.getAsInt() : minim.getAsInt() - y;
-                    this.stopAtHeight = (Baritone.settings().layerOrder.value ? y + schematic.heightY() - minim.getAsInt() : maxim.getAsInt() - y) + 1;
+                    int startAtHeight = useLayerOrder() ? y + schematic.heightY() - maxim.getAsInt() : minim.getAsInt() - y;
+                    this.stopAtHeight = (useLayerOrder() ? y + schematic.heightY() - minim.getAsInt() : maxim.getAsInt() - y) + 1;
                     this.layer = Math.max(this.layer, startAtHeight / Baritone.settings().layerHeight.value);  // startAtLayer or startAtHeight, whichever is highest
                     logDebug(String.format("Schematic starts at y=%s with height %s", y, schematic.heightY()));
                     logDebug(String.format("Selection starts at y=%s and ends at y=%s", minim.getAsInt(), maxim.getAsInt()));
@@ -456,7 +477,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (paused) {
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
-        if (Baritone.settings().buildInLayers.value) {
+        if (useBuildInLayers()) {
             if (realSchematic == null) {
                 realSchematic = schematic;
             }
@@ -465,7 +486,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             int maxYInclusive;
             // layer = 0 should be nothing
             // layer = realSchematic.heightY() should be everything
-            if (Baritone.settings().layerOrder.value) { // top to bottom
+            if (useLayerOrder()) { // top to bottom
                 maxYInclusive = realSchematic.heightY() - 1;
                 minYInclusive = realSchematic.heightY() - layer * Baritone.settings().layerHeight.value;
             } else {
@@ -506,7 +527,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         BuilderCalculationContext bcc = new BuilderCalculationContext();
         if (!recalc(bcc)) {
-            if (Baritone.settings().buildInLayers.value && layer * Baritone.settings().layerHeight.value < stopAtHeight) {
+            if (useBuildInLayers() && layer * Baritone.settings().layerHeight.value < stopAtHeight) {
                 logDirect("Starting layer " + layer);
                 layer++;
                 return onTick(calcFailed, isSafeToCancel, recursions + 1);
@@ -599,7 +620,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (goal == null) {
             goal = assemble(bcc, approxPlaceable, true); // we're far away, so assume that we have our whole inventory to recalculate placeable properly
             if (goal == null) {
-                if (Baritone.settings().skipFailedLayers.value && Baritone.settings().buildInLayers.value && layer * Baritone.settings().layerHeight.value < realSchematic.heightY()) {
+                if (Baritone.settings().skipFailedLayers.value && useBuildInLayers() && layer * Baritone.settings().layerHeight.value < realSchematic.heightY()) {
                     logDirect("Skipping layer that I cannot construct! Layer #" + layer);
                     layer++;
                     return onTick(calcFailed, isSafeToCancel, recursions + 1);
@@ -983,6 +1004,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         numRepeats = 0;
         paused = false;
         observedCompleted = null;
+        forceBuildInLayers = null;
+        forceLayerOrder = null;
     }
 
     @Override
@@ -992,7 +1015,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     @Override
     public Optional<Integer> getMinLayer() {
-        if (Baritone.settings().buildInLayers.value) {
+        if (useBuildInLayers()) {
             return Optional.of(this.layer);
         }
         return Optional.empty();
@@ -1000,7 +1023,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     @Override
     public Optional<Integer> getMaxLayer() {
-        if (Baritone.settings().buildInLayers.value) {
+        if (useBuildInLayers()) {
             return Optional.of(this.stopAtHeight);
         }
         return Optional.empty();

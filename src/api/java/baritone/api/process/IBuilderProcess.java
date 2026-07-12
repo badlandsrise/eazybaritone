@@ -70,6 +70,15 @@ public interface IBuilderProcess extends IBaritoneProcess {
     void clearArea(BlockPos corner1, BlockPos corner2);
 
     /**
+     * Overrides buildInLayers/layerOrder for the NEXT build only (null = use the global setting).
+     * Cleared automatically when the build ends.
+     *
+     * @param inLayers Whether to build strictly in layers, or {@code null} to use the global setting
+     * @param topDown  Whether layers descend from the top, or {@code null} to use the global setting
+     */
+    void setLayerOverride(Boolean inLayers, Boolean topDown);
+
+    /**
      * @return A list of block states that are estimated to be placeable by this builder process. You can use this in
      * schematics, for example, to pick a state that the builder process will be happy with, because any variation will
      * cause it to give up. This is updated every tick, but only while the builder process is active.

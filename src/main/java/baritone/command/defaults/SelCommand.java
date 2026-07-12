@@ -197,6 +197,10 @@ public class SelCommand extends Command {
                 composite.put(schematic, min.x - origin.x, min.y - origin.y, min.z - origin.z);
             }
             baritone.getBuilderProcess().build("Fill", composite, origin);
+            // Apply the layer override AFTER build() (build() clears any previous one):
+            // clear digs top-down, fills build bottom-up, both strictly layered.
+            boolean topToBottom = action == Action.CLEARAREA;
+            baritone.getBuilderProcess().setLayerOverride(true, topToBottom);
             logDirect("Filling now");
         } else if (action == Action.COPY) {
             BetterBlockPos playerPos = ctx.viewerPos();

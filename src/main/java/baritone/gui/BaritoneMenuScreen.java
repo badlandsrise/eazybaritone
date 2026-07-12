@@ -28,6 +28,7 @@ import baritone.api.pathing.goals.GoalBlock;
 import baritone.api.process.IBaritoneProcess;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.SettingsUtil;
+import baritone.utils.MacroManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -69,6 +70,7 @@ public class BaritoneMenuScreen extends Screen {
         FARM("Farm"),
         AREA("Area"),
         CLIPBOARD("Clip"),
+        MACROS("Macros"),
         SETTINGS("Settings");
 
         final String label;
@@ -187,12 +189,20 @@ public class BaritoneMenuScreen extends Screen {
     private String gotoX = "", gotoY = "", gotoZ = "";
     private String waypointName = "";
     private String farmRadius = "32";
+    private String macroAttackSecs = ""; // display for auto left-click interval; MacroManager is source of truth
+    private String macroUseSecs = "";    // display for auto right-click interval
     private String areaFillBlock = ""; // fill/placement block chosen in the Area tab
     private String areaReplaceFrom = ""; // block that Replace looks for and swaps out
     private int blockPickTarget = 0; // 0 = none, 4 = area fill, 5 = area replace-from, 6 = wand item
     private String pickerSearch = "";
-    private boolean restoreSearchFocus = false;
     private String statusMessage = "";
+
+    // The search box on the current tab (Mine / Settings / picker), or null.
+    // MC 26.2's rebuildWidgets() re-runs setInitialFocus() AFTER init(), and while
+    // typing it tab-navigates focus onto the first tab button — kicking the caret
+    // out of the search box after every keystroke. We override setInitialFocus() to
+    // keep focus here instead. Reset at the top of init(); set by each search builder.
+    private EditBox activeSearchBox = null;
 
 
     // Settings tab: search + paging over the full ~200-setting list
@@ -249,6 +259,7 @@ public class BaritoneMenuScreen extends Screen {
 
     @Override
     protected void init() {
+        this.activeSearchBox = null; // set by whichever tab has a search box this pass
         // tab row
         int tabCount = Tab.values().length;
         int tabWidth = 44;
@@ -270,6 +281,7 @@ public class BaritoneMenuScreen extends Screen {
             case FARM -> initFarm();
             case AREA -> initArea();
             case CLIPBOARD -> initClipboard();
+            case MACROS -> initMacros();
             case SETTINGS -> initSettings();
         }
 
@@ -283,6 +295,22 @@ public class BaritoneMenuScreen extends Screen {
                 .bounds(this.width - 70, barY, 56, 20).build());
     }
 
+    /**
+     * Called by {@link Screen#rebuildWidgets()} AFTER {@code init()}. In MC 26.2 the
+     * default implementation tab-navigates focus onto the first widget while the last
+     * input was a keypress — which is exactly when a search box triggered the rebuild,
+     * so the caret would jump off the box after every letter. Keep focus on the active
+     * search box instead; fall back to default behaviour on tabs without one.
+     */
+    @Override
+    protected void setInitialFocus() {
+        if (this.activeSearchBox != null) {
+            this.setInitialFocus(this.activeSearchBox);
+        } else {
+            super.setInitialFocus();
+        }
+    }
+
     // ------------------------------------------------------------------ MINE
 
     private void initMine() {
@@ -294,14 +322,10 @@ public class BaritoneMenuScreen extends Screen {
         search.setValue(mineSearch);
         search.setResponder(s -> {
             mineSearch = s;
-            restoreSearchFocus = true;
             this.rebuildWidgets();
         });
         this.addRenderableWidget(search);
-        if (restoreSearchFocus) {
-            this.setInitialFocus(search);
-            restoreSearchFocus = false;
-        }
+        this.activeSearchBox = search;
 
         EditBox qty = new EditBox(this.font, left + 210, top, 60, 18, Component.literal("amount"));
         qty.setHint(Component.literal("amount"));
@@ -363,14 +387,10 @@ public class BaritoneMenuScreen extends Screen {
         search.setValue(pickerSearch);
         search.setResponder(s -> {
             pickerSearch = s;
-            restoreSearchFocus = true;
             this.rebuildWidgets();
         });
         this.addRenderableWidget(search);
-        if (restoreSearchFocus) {
-            this.setInitialFocus(search);
-            restoreSearchFocus = false;
-        }
+        this.activeSearchBox = search;
 
         this.addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> {
             blockPickTarget = 0;
@@ -567,6 +587,89 @@ public class BaritoneMenuScreen extends Screen {
         }).bounds(left + 70, top - 1, 110, 20).build());
     }
 
+    // ---------------------------------------------------------------- MACROS
+
+    private void initMacros() {
+        int left = contentLeft();
+        int top = contentTop();
+        int w = 200;
+
+        if (macroAttackSecs.isEmpty()) {
+            macroAttackSecs = formatSeconds(MacroManager.getAutoAttackSeconds());
+        }
+        if (macroUseSecs.isEmpty()) {
+            macroUseSecs = formatSeconds(MacroManager.getAutoUseSeconds());
+        }
+
+        // Auto left-click (attack) on an interval
+        this.addRenderableWidget(CycleButton.onOffBuilder(MacroManager.isAutoAttack())
+                .create(left, top, w, 20, Component.literal("Auto-click left (attack)"),
+                        (btn, val) -> MacroManager.setAutoAttack(val)));
+        EditBox attackSecs = new EditBox(this.font, left + w + 10, top + 1, 55, 18, Component.literal("secs"));
+        attackSecs.setHint(Component.literal("secs"));
+        attackSecs.setValue(macroAttackSecs);
+        attackSecs.setResponder(s -> {
+            macroAttackSecs = sanitizeSeconds(s);
+            MacroManager.setAutoAttackSeconds(parseSeconds(macroAttackSecs, 0.5));
+        });
+        this.addRenderableWidget(attackSecs);
+
+        // Auto right-click (use) on an interval
+        this.addRenderableWidget(CycleButton.onOffBuilder(MacroManager.isAutoUse())
+                .create(left, top + 26, w, 20, Component.literal("Auto-click right (use)"),
+                        (btn, val) -> MacroManager.setAutoUse(val)));
+        EditBox useSecs = new EditBox(this.font, left + w + 10, top + 27, 55, 18, Component.literal("secs"));
+        useSecs.setHint(Component.literal("secs"));
+        useSecs.setValue(macroUseSecs);
+        useSecs.setResponder(s -> {
+            macroUseSecs = sanitizeSeconds(s);
+            MacroManager.setAutoUseSeconds(parseSeconds(macroUseSecs, 0.5));
+        });
+        this.addRenderableWidget(useSecs);
+
+        // Hold left-click (continuous mine/attack)
+        this.addRenderableWidget(CycleButton.onOffBuilder(MacroManager.isHoldAttack())
+                .create(left, top + 56, w, 20, Component.literal("Hold left (mine/attack)"),
+                        (btn, val) -> MacroManager.setHoldAttack(val)));
+
+        // Hold right-click (continuous use)
+        this.addRenderableWidget(CycleButton.onOffBuilder(MacroManager.isHoldUse())
+                .create(left, top + 82, w, 20, Component.literal("Hold right (use)"),
+                        (btn, val) -> MacroManager.setHoldUse(val)));
+    }
+
+    /** Keep only digits and a single decimal point for the seconds fields. */
+    private static String sanitizeSeconds(String s) {
+        StringBuilder sb = new StringBuilder();
+        boolean dot = false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= '0' && c <= '9') {
+                sb.append(c);
+            } else if (c == '.' && !dot) {
+                dot = true;
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static double parseSeconds(String s, double fallback) {
+        try {
+            double v = Double.parseDouble(s);
+            return v > 0 ? v : fallback;
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private static String formatSeconds(double seconds) {
+        if (seconds == Math.rint(seconds)) {
+            return Integer.toString((int) seconds);
+        }
+        return Double.toString(seconds);
+    }
+
     private void openPicker(int target) {
         blockPickTarget = target;
         pickerSearch = "";
@@ -583,14 +686,10 @@ public class BaritoneMenuScreen extends Screen {
         search.setValue(pickerSearch);
         search.setResponder(s -> {
             pickerSearch = s;
-            restoreSearchFocus = true;
             this.rebuildWidgets();
         });
         this.addRenderableWidget(search);
-        if (restoreSearchFocus) {
-            this.setInitialFocus(search);
-            restoreSearchFocus = false;
-        }
+        this.activeSearchBox = search;
 
         this.addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> {
             blockPickTarget = 0;
@@ -689,6 +788,24 @@ public class BaritoneMenuScreen extends Screen {
                 .bounds(left + 200, replaceTop, 100, 20).build();
         replace.active = canFill && !areaReplaceFrom.isEmpty();
         this.addRenderableWidget(replace);
+
+        // Nudge the whole selection one block on any axis. Each column is one axis;
+        // the outline re-renders itself from the SelectionManager, so we just shift it.
+        int nudgeTop = replaceTop + 26;
+        addAreaNudgeButton("West (X-)", "west", left, nudgeTop, hasSelection);
+        addAreaNudgeButton("East (X+)", "east", left, nudgeTop + 22, hasSelection);
+        addAreaNudgeButton("North (Z-)", "north", left + 102, nudgeTop, hasSelection);
+        addAreaNudgeButton("South (Z+)", "south", left + 102, nudgeTop + 22, hasSelection);
+        addAreaNudgeButton("Up", "up", left + 204, nudgeTop, hasSelection);
+        addAreaNudgeButton("Down", "down", left + 204, nudgeTop + 22, hasSelection);
+    }
+
+    /** Move the whole current selection one block in {@code direction} (up/down/north/south/east/west). */
+    private void addAreaNudgeButton(String label, String direction, int x, int y, boolean enabled) {
+        Button b = Button.builder(Component.literal(label), btn -> runCommandKeepOpen("sel shift all " + direction + " 1"))
+                .bounds(x, y, 97, 20).build();
+        b.active = enabled;
+        this.addRenderableWidget(b);
     }
 
     private void runCommandKeepOpen(String command) {
@@ -868,14 +985,10 @@ public class BaritoneMenuScreen extends Screen {
         search.setResponder(s -> {
             settingsSearch = s;
             settingsPage = 0;
-            restoreSearchFocus = true;
             this.rebuildWidgets();
         });
         this.addRenderableWidget(search);
-        if (restoreSearchFocus) {
-            this.setInitialFocus(search);
-            restoreSearchFocus = false;
-        }
+        this.activeSearchBox = search;
 
         // Build the display order: curated common settings first, then the rest
         // alphabetically. Then filter by the search box (matching name OR label).
@@ -985,7 +1098,7 @@ public class BaritoneMenuScreen extends Screen {
         }
 
         if (this.tab == Tab.AREA && blockPickTarget == 0) {
-            int y = contentTop() + 172;
+            int y = contentTop() + 222; // below the nudge-button cluster (last row bottoms at +214)
             for (String line : areaInfoLines()) {
                 extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
                 y += 11;
@@ -995,6 +1108,21 @@ public class BaritoneMenuScreen extends Screen {
         if (this.tab == Tab.CLIPBOARD) {
             int y = contentTop() + (baritone.utils.ClipboardGhost.isPlacing() ? 128 : 56);
             for (String line : clipboardInfoLines()) {
+                extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
+                y += 11;
+            }
+        }
+
+        if (this.tab == Tab.MACROS) {
+            int y = contentTop() + 116;
+            String[] lines = {
+                    "Auto-click fires every N seconds. Hold keeps the button held down.",
+                    "Hold left mines/attacks whatever you're looking at; hold right repeats use.",
+                    "Macros only run in-world with no menu open, and stand down while",
+                    "Baritone is pathing, mining or building.",
+                    "Close this menu (B) for the macros to take effect."
+            };
+            for (String line : lines) {
                 extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
                 y += 11;
             }

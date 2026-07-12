@@ -102,6 +102,10 @@ public class MixinMinecraft {
             }
         }
 
+        // Drive the GUI macros tab (auto/hold click). Runs at tick RETURN so
+        // vanilla's next handleKeybinds() consumes whatever key state we set.
+        baritone.utils.MacroManager.onClientTick(mc);
+
         if (this.tickProvider == null) {
             return;
         }

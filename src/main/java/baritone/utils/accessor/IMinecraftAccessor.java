@@ -15,11 +15,15 @@
  * along with Baritone.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package baritone.launch;
+package baritone.utils.accessor;
 
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.common.Mod;
+/**
+ * Exposes Minecraft's private {@code startAttack}/{@code startUseItem} so the
+ * macros tab can fire a single discrete click, exactly as a real mouse click would.
+ */
+public interface IMinecraftAccessor {
 
-@Mod(value = "baritoe", dist = Dist.CLIENT)
-public class BaritoneForgeModXD {
+    boolean callStartAttack();
+
+    void callStartUseItem();
 }

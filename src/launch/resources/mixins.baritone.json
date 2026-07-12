@@ -22,6 +22,7 @@
     "MixinLootTable",
     "MixinHud",
     "MixinMinecraft",
+    "MixinMinecraftAccessor",
     "MixinOptions",
     "MixinNetworkManager",
     "MixinPalettedContainer",
