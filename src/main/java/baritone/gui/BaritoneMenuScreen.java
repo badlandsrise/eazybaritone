@@ -80,7 +80,8 @@ public class BaritoneMenuScreen extends Screen {
         CLIPBOARD("Clip"),
         SAVED("Saved"),
         MACROS("Macros"),
-        SETTINGS("Settings");
+        SETTINGS("Settings"),
+        DANGEROUS("Danger");
 
         final String label;
 
@@ -294,6 +295,7 @@ public class BaritoneMenuScreen extends Screen {
             case SAVED -> initSaved();
             case MACROS -> initMacros();
             case SETTINGS -> initSettings();
+            case DANGEROUS -> initDangerous();
         }
 
         // status bar controls (all tabs)
@@ -1142,18 +1144,13 @@ public class BaritoneMenuScreen extends Screen {
                 EditBox box = new EditBox(this.font, ctrlX, rowY + 1, SETTINGS_CTRL_W, 18, Component.literal(labelFor(s)));
                 box.setMaxLength(512);
                 box.setValue(current);
-                final String name = s.getName();
-                // set the responder AFTER setValue so populating the field
-                // doesn't re-apply/save during rebuild
-                box.setResponder(v -> {
-                    try {
-                        SettingsUtil.parseAndApply(settings, name, v.trim());
-                        SettingsUtil.save(settings);
-                    } catch (Exception ignored) {
-                        // partial or invalid input; keep the old value until it parses
-                    }
-                });
+                // No per-keystroke apply (partial/empty input threw and silently dropped the
+                // edit). The "Set" button commits deliberately - and can clear a list to empty.
                 this.addRenderableWidget(box);
+                final Settings.Setting<?> setting = s;
+                this.addRenderableWidget(Button.builder(Component.literal("Set"),
+                        b -> applySetting(settings, setting, box.getValue().trim()))
+                        .bounds(ctrlX - 34, rowY, 30, 20).build());
             }
             rowY += 22;
         }
@@ -1174,6 +1171,79 @@ public class BaritoneMenuScreen extends Screen {
         this.addRenderableWidget(next);
 
         settingsPageInfo = "Page " + (settingsPage + 1) + " / " + totalPages + "   (" + matches.size() + " shown)";
+    }
+
+    /** Commit an edited setting's value (the "Set" button). Handles clearing a list/map to empty. */
+    private void applySetting(Settings settings, Settings.Setting<?> setting, String value) {
+        try {
+            if (value.isEmpty() && setting.value instanceof java.util.Collection) {
+                ((java.util.Collection<?>) setting.value).clear();
+            } else if (value.isEmpty() && setting.value instanceof Map) {
+                ((Map<?, ?>) setting.value).clear();
+            } else {
+                SettingsUtil.parseAndApply(settings, setting.getName(), value);
+            }
+            SettingsUtil.save(settings);
+            statusMessage = "Saved: " + labelFor(setting);
+        } catch (Exception e) {
+            statusMessage = "Couldn't set " + setting.getName() + " (invalid value)";
+        }
+        this.rebuildWidgets();
+    }
+
+    /** Settings that can get a player banned on public servers - shown in the Dangerous tab. name -> short label. */
+    private static final String[][] DANGEROUS_SETTINGS = {
+            {"buildPrinterMode",          "Printer place (reach, thru walls)"},
+            {"legitMine",                 "Legit mine (OFF = x-ray ores)"},
+            {"legitMineIncludeDiagonals", "X-ray whole ore veins"},
+            {"blockFreeLook",             "Silent place/break rotations"},
+            {"blockReachDistance",        "Block reach (>4.5 = reach hack)"},
+    };
+
+    /** The Dangerous tab: a fixed, curated list of bannable settings with a warning banner. */
+    private void initDangerous() {
+        Settings settings = BaritoneAPI.getSettings();
+        int top = contentTop();
+        int listWidth = Math.min(480, this.width - 40);
+        int left = (this.width - listWidth) / 2;
+        int ctrlX = left + listWidth - SETTINGS_CTRL_W;
+        settingsLeftX = left;
+        settingRows.clear();
+        settingsPageInfo = "";
+
+        int rowY = top + 34; // leave room for the two-line warning banner (drawn in extractRenderState)
+        for (String[] entry : DANGEROUS_SETTINGS) {
+            Settings.Setting<?> s = settings.byLowerName.get(entry[0].toLowerCase(Locale.ROOT));
+            if (s == null) {
+                continue; // name mismatch -> skip the row rather than crash
+            }
+            settingRows.add(new SettingRow(entry[1], rowY + 6));
+            if (s.value instanceof Boolean) {
+                @SuppressWarnings("unchecked")
+                Settings.Setting<Boolean> bs = (Settings.Setting<Boolean>) s;
+                this.addRenderableWidget(CycleButton.onOffBuilder(bs.value).displayOnlyValue()
+                        .create(ctrlX, rowY, SETTINGS_CTRL_W, 20, Component.literal(entry[1]), (btn, val) -> {
+                            bs.value = val;
+                            SettingsUtil.save(settings);
+                        }));
+            } else {
+                String current;
+                try {
+                    current = SettingsUtil.settingValueToString(s);
+                } catch (Exception e) {
+                    current = "";
+                }
+                EditBox box = new EditBox(this.font, ctrlX, rowY + 1, SETTINGS_CTRL_W, 18, Component.literal(entry[1]));
+                box.setMaxLength(512);
+                box.setValue(current);
+                this.addRenderableWidget(box);
+                final Settings.Setting<?> setting = s;
+                this.addRenderableWidget(Button.builder(Component.literal("Set"),
+                        b -> applySetting(settings, setting, box.getValue().trim()))
+                        .bounds(ctrlX - 34, rowY, 30, 20).build());
+            }
+            rowY += 22;
+        }
     }
 
     /** All editable settings, common ones first (in curated order) then A-Z. */
@@ -1258,14 +1328,21 @@ public class BaritoneMenuScreen extends Screen {
         }
 
 
-        if (this.tab == Tab.SETTINGS) {
+        if (this.tab == Tab.SETTINGS || this.tab == Tab.DANGEROUS) {
             for (SettingRow r : settingRows) {
                 extractor.text(this.font, r.label(), settingsLeftX, r.y(), 0xFFDDDDDD, true);
             }
-            if (!settingsPageInfo.isEmpty()) {
+            if (this.tab == Tab.SETTINGS && !settingsPageInfo.isEmpty()) {
                 extractor.text(this.font, settingsPageInfo,
                         settingsLeftX + 70, contentTop() + 26 + SETTINGS_PAGE_SIZE * 22 + 10, 0xFFBBBBBB, true);
             }
+        }
+
+        if (this.tab == Tab.DANGEROUS) {
+            extractor.text(this.font, "These can get you BANNED on public servers. Off by default - use at your own risk.",
+                    settingsLeftX, contentTop() + 6, 0xFFFF5555, true);
+            extractor.text(this.font, "\"Legit mine\" ON = safe (no x-ray). Printer place fabricates hits (no line of sight).",
+                    settingsLeftX, contentTop() + 18, 0xFFFFAA55, true);
         }
 
         // status bar: what's baritone doing right now

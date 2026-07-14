@@ -30,17 +30,30 @@ public class BlockPlaceHelper {
 
     private final IPlayerContext ctx;
     private int rightClickTimer;
+    private BlockHitResult pendingDirectHit; // printer mode: place against this synthesized hit instead of the live camera ray
 
     BlockPlaceHelper(IPlayerContext playerContext) {
         this.ctx = playerContext;
     }
 
+    /**
+     * Printer-mode override: place against an exact, synthesized {@link BlockHitResult} on the next
+     * tick instead of whatever the camera raytrace happens to hit. Consumed after one tick. This is the
+     * "Litematica printer" mechanism (BuilderProcess routes a validated hit here when buildPrinterMode
+     * is on); it bypasses the line-of-sight requirement of {@link IPlayerContext#objectMouseOver()}.
+     */
+    public void placeDirect(BlockHitResult hit) {
+        this.pendingDirectHit = hit;
+    }
+
     public void tick(boolean rightClickRequested) {
         if (rightClickTimer > 0) {
             rightClickTimer--;
+            pendingDirectHit = null;
             return;
         }
-        HitResult mouseOver = ctx.objectMouseOver();
+        HitResult mouseOver = pendingDirectHit != null ? pendingDirectHit : ctx.objectMouseOver();
+        pendingDirectHit = null; // consume the synthesized hit whether or not we place this tick
         if (!rightClickRequested || ctx.player().isHandsBusy() || mouseOver == null || mouseOver.getType() != HitResult.Type.BLOCK) {
             return;
         }

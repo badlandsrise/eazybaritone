@@ -39,12 +39,12 @@ import baritone.api.selection.ISelectionManager;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.BlockOptionalMeta;
 import baritone.api.utils.BlockOptionalMetaLookup;
-import baritone.utils.BlockStateInterface;
 import baritone.utils.ClipboardGhost;
 import baritone.utils.IRenderer;
 import baritone.utils.schematic.StaticSchematic;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -210,7 +210,6 @@ public class SelCommand extends Command {
             if (selections.length < 1) {
                 throw new CommandInvalidStateException("No selections");
             }
-            BlockStateInterface bsi = new BlockStateInterface(ctx);
             BetterBlockPos origin = selections[0].min();
             CompositeSchematic composite = new CompositeSchematic(0, 0, 0);
             for (ISelection selection : selections) {
@@ -221,6 +220,7 @@ public class SelCommand extends Command {
                         Math.min(origin.z, min.z)
                 );
             }
+            java.util.Set<String> copiedRaw = new java.util.HashSet<>(); // TEMP diagnostic
             for (ISelection selection : selections) {
                 Vec3i size = selection.size();
                 BetterBlockPos min = selection.min();
@@ -228,14 +228,43 @@ public class SelCommand extends Command {
                 for (int x = 0; x < size.getX(); x++) {
                     for (int y = 0; y < size.getY(); y++) {
                         for (int z = 0; z < size.getZ(); z++) {
-                            blockstates[x][z][y] = bsi.get0(min.x + x, min.y + y, min.z + z);
+                            // Read the live world, not bsi.get0 (which can fall back to Baritone's
+                            // simplified block cache and drop states like wall_torch -> torch).
+                            BlockState read = ctx.world().getBlockState(new BlockPos(min.x + x, min.y + y, min.z + z));
+                            blockstates[x][z][y] = read;
+                            if (read != null && !read.isAir()) {
+                                copiedRaw.add(read.getBlock().toString());
+                            }
                         }
                     }
                 }
                 ISchematic schematic = new StaticSchematic(blockstates);
                 composite.put(schematic, min.x - origin.x, min.y - origin.y, min.z - origin.z);
             }
+            logDirect("Copied from world: " + copiedRaw);
             clipboard = composite;
+            // TEMP diagnostic: read the stored clipboard the same way the builder does
+            try {
+                java.util.Set<String> clip = new java.util.HashSet<>();
+                for (int yy = 0; yy < composite.heightY(); yy++) {
+                    for (int zz = 0; zz < composite.lengthZ(); zz++) {
+                        for (int xx = 0; xx < composite.widthX(); xx++) {
+                            if (!composite.inSchematic(xx, yy, zz, null)) {
+                                continue;
+                            }
+                            try {
+                                BlockState s = composite.desiredState(xx, yy, zz, null, java.util.Collections.emptyList());
+                                if (s != null && !s.isAir()) {
+                                    clip.add(s.getBlock().toString());
+                                }
+                            } catch (RuntimeException ignored) {
+                            }
+                        }
+                    }
+                }
+                logDirect("Clipboard has: " + clip);
+            } catch (RuntimeException ignored) {
+            }
             clipboardOffset = origin.subtract(pos);
             ClipboardGhost.set(clipboard, clipboardOffset);
             logDirect("Selection copied");
@@ -246,7 +275,10 @@ public class SelCommand extends Command {
             if (clipboard == null) {
                 throw new CommandInvalidStateException("You need to copy a selection first");
             }
-            baritone.getBuilderProcess().build("Paste", clipboard, pos.offset(clipboardOffset));
+            // Anchor the paste's min-corner at the target (player feet by default), NOT at the copy-time
+            // relative offset - pasting relative to where the selection sat when copied lands it in a
+            // seemingly random spot. build() takes the min-corner directly.
+            baritone.getBuilderProcess().build("Paste", clipboard, pos);
             // Apply overrides AFTER build() (build() clears any previous ones): paste builds
             // layered bottom-up, skips anything it can't place rather than getting stuck, and
             // places by item logic so torches etc. build as their wall variant.

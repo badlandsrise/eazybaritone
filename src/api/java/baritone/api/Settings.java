@@ -326,6 +326,20 @@ public final class Settings {
     public final Setting<Boolean> buildIgnoreDirection = new Setting<>(false);
 
     /**
+     * DANGEROUS - can get you banned on servers with anticheat. Off by default.
+     * <p>
+     * "Litematica printer" style placement. When on, the builder places any schematic block that is
+     * within reach ({@code blockReachDistance}) by sending a synthesized, exact {@link net.minecraft.world.phys.BlockHitResult}
+     * plus the precise rotation that yields the desired blockstate - it does NOT require the camera to
+     * actually be able to see/raytrace the target, and it doesn't need to walk to a precise stance. This
+     * makes oriented blocks (stairs, slabs, logs, observers/pistons facing any of the 6 directions, etc.)
+     * place effortlessly and correctly, but the placements are not something a legitimate client could
+     * produce (no line of sight, instant exact rotation), so anticheats will flag it. Reach is still
+     * clamped to the vanilla {@code blockReachDistance}; only the line-of-sight requirement is relaxed.
+     */
+    public final Setting<Boolean> buildPrinterMode = new Setting<>(false);
+
+    /**
      * If this is true, the builder skips positions it cannot currently place or break (for example
      * unobtainable blocks such as potted plants or wall torches, or unreplaceable flowing liquids)
      * and finishes the rest of the build, instead of pausing. Skipped positions are not revisited
@@ -1207,8 +1221,11 @@ public final class Settings {
      * where it will only mine an ore once it can actually see it, so it won't do or know anything that a normal player
      * couldn't. If you don't want it to look like you're X-Raying, turn this on
      * This will always explore, regardless of exploreForBlocks
+     * <p>
+     * Defaults to TRUE in this fork (legit/safe): X-Ray ore finding is off unless you deliberately turn this
+     * off in the Dangerous tab. Upstream Baritone defaults this to false (X-Ray on).
      */
-    public final Setting<Boolean> legitMine = new Setting<>(false);
+    public final Setting<Boolean> legitMine = new Setting<>(true);
 
     /**
      * What Y level to go to for legit strip mining

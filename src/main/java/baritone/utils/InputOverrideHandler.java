@@ -119,4 +119,8 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
     public BlockBreakHelper getBlockBreakHelper() {
         return blockBreakHelper;
     }
+
+    public BlockPlaceHelper getBlockPlaceHelper() {
+        return blockPlaceHelper;
+    }
 }

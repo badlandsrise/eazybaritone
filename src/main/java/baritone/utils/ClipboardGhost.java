@@ -101,14 +101,12 @@ public final class ClipboardGhost implements IRenderer {
         return mirror;
     }
 
-    /** Drop the ghost at the same spot the old paste-at-feet would have used. */
+    /** Drop the ghost with the clipboard's min-corner at the player's feet (not the copy-time offset). */
     public static void startPlacing(BetterBlockPos playerFeet) {
         if (!hasContent()) {
             return;
         }
-        placePos = new BlockPos(playerFeet.x + copyOffset.getX(),
-                playerFeet.y + copyOffset.getY(),
-                playerFeet.z + copyOffset.getZ());
+        placePos = new BlockPos(playerFeet.x, playerFeet.y, playerFeet.z);
         rotation = Rotation.NONE;
         mirror = Mirror.NONE;
         placing = true;
