@@ -14,6 +14,7 @@ Everything here is licensed under **LGPL v3**, same as upstream — see [Credits
 - **Visual copy/paste** — a "ghost" preview you place, nudge, rotate, and mirror before committing the build, so you always know where a paste will land.
 - **Input macros** — auto-click or hold left/right mouse on a timer, straight from the menu; they stand down automatically while Baritone is pathing.
 - **Searchable settings editor** — browse and edit all of Baritone's settings from the menu, with plain-English labels on the common ones.
+- **Printer placement (opt-in)** — a Litematica-style placer that puts any block within reach in the correct orientation without needing a precise stance or line of sight, so stairs, slabs, and observers/pistons build effortlessly and face the right way. It lives in a clearly-marked **Danger** tab and is **off by default** — it's bannable on anti-cheat servers.
 
 Everything the base mod does is still available through normal chat commands (see [Under the hood](#under-the-hood)); the GUI just wraps the common jobs.
 
@@ -26,10 +27,11 @@ Open it with **B**. Tabs:
 - **Follow** — follow the nearest player/entity.
 - **Farm** — auto-farm within a radius.
 - **Area** — set two corners (or use the wand), then **clear** the region or fill it: solid, walls, shell, sphere, hollow sphere, cylinder, hollow cylinder, or **replace** one block with another. Fill block is chosen from an icon picker, and **Move** buttons nudge the whole selection a block at a time on any axis. Clears dig out top-to-bottom and fills build bottom-to-top, so the job looks tidy in progress.
-- **Clip** — **Copy**/**Cut** a selection, then **Place paste**: a ghost drops into the world where it'll build. Nudge it on any axis, **rotate** 90°, **mirror** it, then **Build here**. Paste builds bottom-to-top, places wall-mounted items as their wall variant (a torch becomes a wall torch), and skips anything it genuinely can't place instead of getting stuck.
+- **Clip** — **Copy**/**Cut** a selection, then **Place paste**: a ghost drops in **at your feet** (not off at some copy-time offset). Nudge it on any axis, **rotate** 90°, **mirror** it, then **Build here**. Paste builds bottom-to-top, places wall-mounted items as their wall variant (a torch becomes a wall torch), gets stairs facing the right way, and skips anything it genuinely can't place instead of getting stuck. (Turn on printer placement in the **Danger** tab if you want oriented blocks to go in effortlessly.)
 - **Saved** — save the clipboard to disk as a `.schem` file that survives restarts. Name it, **Save to disk**, and it shows up in the list; **Place** loads it back into the ghost flow. Saved files live in your `schematics/` folder and also load with `#build <name>.schem`.
 - **Macros** — light input helpers: auto-click **left** (attack) or **right** (use) on a seconds timer, or **hold** either button down. They only run in-world with no menu open, and pause while Baritone is pathing, mining or building.
 - **Settings** — search across every setting; toggles for booleans, editable fields for numbers/colors/lists; the common ones have descriptions.
+- **Danger** — opt-in settings that can get you banned on public servers, all **off by default** behind a red warning banner: **printer placement** (reach-based, exact-orientation building with no line of sight needed), **X-ray ore mining** (`legitMine` — off here means it sees ores through walls), **silent place/break rotations**, and **block reach**. Use these in singleplayer or where you have permission. (Note: X-ray mining ships **off** in this fork — `legitMine` defaults on — unlike upstream Baritone.)
 
 There's also a one-line HUD showing the current job (toggle with the `guiHud` setting), and Pause/Resume/Stop buttons on every tab.
 
@@ -51,8 +53,10 @@ Schematic building, block substitutions, elytra flight, waypoints, and the full 
 ## Install
 
 1. Minecraft 26.2 with **Fabric Loader**.
-2. Drop the jar in your `mods/` folder. (No Fabric API dependency.)
+2. Grab the latest `eazybaritone-<version>.jar` from the [**Releases**](https://github.com/badlandsrise/eazybaritone/releases) page and drop it in your `mods/` folder. (No Fabric API dependency.)
 3. Launch, load a world, press **B**.
+
+> Not on Modrinth/CurseForge — like upstream Baritone, this is distributed here on GitHub. Grab it from Releases.
 
 ## Build from source
 
