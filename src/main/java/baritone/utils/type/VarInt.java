@@ -58,7 +58,9 @@ public final class VarInt {
         ByteList bytes = new ByteArrayList();
 
         int value = valueIn;
-        while ((value & 0x80) != 0) {
+        // continue while any bit above the low 7 remains set (not just bit 7);
+        // testing only 0x80 truncates any value >= 256 whose low byte is < 128
+        while ((value & ~0x7F) != 0) {
             bytes.add((byte) (value & 0x7F | 0x80));
             value >>>= 7;
         }

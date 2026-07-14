@@ -18,6 +18,7 @@
 package baritone.utils;
 
 import baritone.api.BaritoneAPI;
+import baritone.api.process.IBuilderProcess;
 import baritone.api.schematic.ISchematic;
 import baritone.api.schematic.MirroredSchematic;
 import baritone.api.schematic.RotatedSchematic;
@@ -72,6 +73,16 @@ public final class ClipboardGhost implements IRenderer {
 
     public static boolean hasContent() {
         return clipboard != null && copyOffset != null;
+    }
+
+    /** The raw copied schematic (no rotation/mirror), for saving. */
+    public static ISchematic currentClipboard() {
+        return clipboard;
+    }
+
+    /** The copy offset paired with {@link #currentClipboard()}. */
+    public static Vec3i currentOffset() {
+        return copyOffset;
     }
 
     public static boolean isPlacing() {
@@ -154,7 +165,14 @@ public final class ClipboardGhost implements IRenderer {
         if (!placing || !hasContent() || placePos == null) {
             return;
         }
-        BaritoneAPI.getProvider().getPrimaryBaritone().getBuilderProcess().build("Paste", display(), placePos);
+        IBuilderProcess bp = BaritoneAPI.getProvider().getPrimaryBaritone().getBuilderProcess();
+        bp.build("Paste", display(), placePos);
+        // Apply overrides AFTER build() (build() clears any previous ones): paste builds
+        // layered bottom-up, skips anything it can't place rather than getting stuck, and
+        // places by item logic so torches etc. build as their wall variant.
+        bp.setLayerOverride(true, false);
+        bp.setSkipUnplaceableOverride(true);
+        bp.setPlaceByItemOverride(true);
         placing = false;
     }
 

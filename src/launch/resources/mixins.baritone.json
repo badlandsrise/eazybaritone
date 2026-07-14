@@ -20,6 +20,7 @@
     "MixinLivingEntity",
     "MixinLootContextBuilder",
     "MixinLootTable",
+    "MixinBlockItemAccessor",
     "MixinHud",
     "MixinMinecraft",
     "MixinMinecraftAccessor",

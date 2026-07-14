@@ -26,7 +26,8 @@ Open it with **B**. Tabs:
 - **Follow** — follow the nearest player/entity.
 - **Farm** — auto-farm within a radius.
 - **Area** — set two corners (or use the wand), then **clear** the region or fill it: solid, walls, shell, sphere, hollow sphere, cylinder, hollow cylinder, or **replace** one block with another. Fill block is chosen from an icon picker, and **Move** buttons nudge the whole selection a block at a time on any axis. Clears dig out top-to-bottom and fills build bottom-to-top, so the job looks tidy in progress.
-- **Clip** — **Copy**/**Cut** a selection, then **Place paste**: a ghost drops into the world where it'll build. Nudge it on any axis, **rotate** 90°, **mirror** it, then **Build here**. **Clear clipboard** discards it.
+- **Clip** — **Copy**/**Cut** a selection, then **Place paste**: a ghost drops into the world where it'll build. Nudge it on any axis, **rotate** 90°, **mirror** it, then **Build here**. Paste builds bottom-to-top, places wall-mounted items as their wall variant (a torch becomes a wall torch), and skips anything it genuinely can't place instead of getting stuck.
+- **Saved** — save the clipboard to disk as a `.schem` file that survives restarts. Name it, **Save to disk**, and it shows up in the list; **Place** loads it back into the ghost flow. Saved files live in your `schematics/` folder and also load with `#build <name>.schem`.
 - **Macros** — light input helpers: auto-click **left** (attack) or **right** (use) on a seconds timer, or **hold** either button down. They only run in-world with no menu open, and pause while Baritone is pathing, mining or building.
 - **Settings** — search across every setting; toggles for booleans, editable fields for numbers/colors/lists; the common ones have descriptions.
 

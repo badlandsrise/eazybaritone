@@ -27,8 +27,13 @@ import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalBlock;
 import baritone.api.process.IBaritoneProcess;
 import baritone.api.utils.BetterBlockPos;
+import baritone.api.schematic.IStaticSchematic;
+import baritone.api.schematic.format.ISchematicFormat;
 import baritone.api.utils.SettingsUtil;
+import baritone.utils.ClipboardGhost;
 import baritone.utils.MacroManager;
+import baritone.utils.schematic.SchematicSystem;
+import baritone.utils.schematic.format.defaults.SpongeSchematicWriter;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -37,6 +42,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -45,7 +51,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -70,6 +78,7 @@ public class BaritoneMenuScreen extends Screen {
         FARM("Farm"),
         AREA("Area"),
         CLIPBOARD("Clip"),
+        SAVED("Saved"),
         MACROS("Macros"),
         SETTINGS("Settings");
 
@@ -191,6 +200,7 @@ public class BaritoneMenuScreen extends Screen {
     private String farmRadius = "32";
     private String macroAttackSecs = ""; // display for auto left-click interval; MacroManager is source of truth
     private String macroUseSecs = "";    // display for auto right-click interval
+    private String savedName = "";       // name typed in the Saved tab for the next save
     private String areaFillBlock = ""; // fill/placement block chosen in the Area tab
     private String areaReplaceFrom = ""; // block that Replace looks for and swaps out
     private int blockPickTarget = 0; // 0 = none, 4 = area fill, 5 = area replace-from, 6 = wand item
@@ -281,6 +291,7 @@ public class BaritoneMenuScreen extends Screen {
             case FARM -> initFarm();
             case AREA -> initArea();
             case CLIPBOARD -> initClipboard();
+            case SAVED -> initSaved();
             case MACROS -> initMacros();
             case SETTINGS -> initSettings();
         }
@@ -585,6 +596,107 @@ public class BaritoneMenuScreen extends Screen {
             String r = farmRadius.trim();
             runCommand(r.isEmpty() ? "farm" : "farm " + r);
         }).bounds(left + 70, top - 1, 110, 20).build());
+    }
+
+    // ----------------------------------------------------------------- SAVED
+
+    private void initSaved() {
+        int left = contentLeft();
+        int top = contentTop();
+
+        // name + save the current clipboard to disk as a .schem
+        EditBox name = new EditBox(this.font, left, top, 200, 18, Component.literal("name"));
+        name.setHint(Component.literal("Name this schematic..."));
+        name.setValue(savedName);
+        name.setResponder(s -> savedName = s);
+        this.addRenderableWidget(name);
+
+        Button save = Button.builder(Component.literal("Save to disk"), b -> saveClipboardToDisk())
+                .bounds(left + 210, top - 1, 90, 20).build();
+        save.active = ClipboardGhost.hasContent();
+        this.addRenderableWidget(save);
+
+        // list the .schem files in the schematics folder: Place (into the ghost flow) + delete
+        File[] files = listSchemFiles();
+        int rowY = top + 54;
+        for (File f : files) {
+            if (rowY > this.height - 56) {
+                break;
+            }
+            final File file = f;
+            String label = f.getName().substring(0, f.getName().length() - ".schem".length());
+            this.addRenderableWidget(Button.builder(Component.literal("Place: " + label), b -> placeFromDisk(file))
+                    .bounds(left, rowY, 240, 20).build());
+            this.addRenderableWidget(Button.builder(Component.literal("x").copy().withStyle(ChatFormatting.RED), b -> {
+                if (file.delete()) {
+                    statusMessage = "Deleted " + file.getName();
+                }
+                this.rebuildWidgets();
+            }).bounds(left + 246, rowY, 20, 20).build());
+            rowY += 23;
+        }
+    }
+
+    private File schematicsDir() {
+        return this.minecraft == null ? null : new File(this.minecraft.gameDirectory, "schematics");
+    }
+
+    private File[] listSchemFiles() {
+        File dir = schematicsDir();
+        File[] files = dir == null ? null : dir.listFiles((d, n) -> n.toLowerCase(Locale.ROOT).endsWith(".schem"));
+        if (files == null) {
+            return new File[0];
+        }
+        Arrays.sort(files, Comparator.comparing(File::getName));
+        return files;
+    }
+
+    private void saveClipboardToDisk() {
+        String n = savedName.trim();
+        if (n.isEmpty()) {
+            statusMessage = "Type a name first";
+            return;
+        }
+        if (!ClipboardGhost.hasContent()) {
+            statusMessage = "Copy something in the Clip tab first";
+            return;
+        }
+        File dir = schematicsDir();
+        if (dir == null) {
+            statusMessage = "No game directory available";
+            return;
+        }
+        dir.mkdirs();
+        String safe = n.replaceAll("[^A-Za-z0-9_\\-]", "_");
+        File file = new File(dir, safe + ".schem");
+        try {
+            SpongeSchematicWriter.writeToFile(ClipboardGhost.currentClipboard(), file.toPath());
+            savedName = "";
+            statusMessage = "Saved " + file.getName();
+        } catch (Exception e) {
+            statusMessage = "Save failed: " + e.getMessage();
+        }
+        this.rebuildWidgets();
+    }
+
+    private void placeFromDisk(File file) {
+        try {
+            java.util.Optional<ISchematicFormat> format = SchematicSystem.INSTANCE.getByFile(file);
+            if (format.isEmpty()) {
+                statusMessage = "Unknown schematic format";
+                return;
+            }
+            IStaticSchematic schematic;
+            try (FileInputStream in = new FileInputStream(file)) {
+                schematic = format.get().parse(in);
+            }
+            ClipboardGhost.set(schematic, Vec3i.ZERO);
+            ClipboardGhost.startPlacing(baritone().getPlayerContext().playerFeet());
+            this.tab = Tab.CLIPBOARD; // hand off to the Clip tab's nudge/rotate/build UI
+            this.rebuildWidgets();
+        } catch (Exception e) {
+            statusMessage = "Load failed: " + e.getMessage();
+        }
     }
 
     // ---------------------------------------------------------------- MACROS
@@ -1108,6 +1220,23 @@ public class BaritoneMenuScreen extends Screen {
         if (this.tab == Tab.CLIPBOARD) {
             int y = contentTop() + (baritone.utils.ClipboardGhost.isPlacing() ? 128 : 56);
             for (String line : clipboardInfoLines()) {
+                extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
+                y += 11;
+            }
+        }
+
+        if (this.tab == Tab.SAVED) {
+            String[] lines = listSchemFiles().length == 0
+                    ? new String[]{
+                        "No saved schematics yet.",
+                        "Copy a selection in the Clip tab, come here, name it and Save to disk.",
+                        "Files are .schem in your schematics folder - they survive restarts",
+                        "and also load with  #build <name>.schem"}
+                    : new String[]{
+                        "Place drops a saved schematic as a ghost in the Clip tab to build.",
+                        "Files live in schematics/ and also load with  #build <name>.schem"};
+            int y = contentTop() + 28;
+            for (String line : lines) {
                 extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
                 y += 11;
             }

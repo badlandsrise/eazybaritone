@@ -246,7 +246,13 @@ public class SelCommand extends Command {
             if (clipboard == null) {
                 throw new CommandInvalidStateException("You need to copy a selection first");
             }
-            baritone.getBuilderProcess().build("Fill", clipboard, pos.offset(clipboardOffset));
+            baritone.getBuilderProcess().build("Paste", clipboard, pos.offset(clipboardOffset));
+            // Apply overrides AFTER build() (build() clears any previous ones): paste builds
+            // layered bottom-up, skips anything it can't place rather than getting stuck, and
+            // places by item logic so torches etc. build as their wall variant.
+            baritone.getBuilderProcess().setLayerOverride(true, false);
+            baritone.getBuilderProcess().setSkipUnplaceableOverride(true);
+            baritone.getBuilderProcess().setPlaceByItemOverride(true);
             logDirect("Building now");
         } else if (action == Action.EXPAND || action == Action.CONTRACT || action == Action.SHIFT) {
             args.requireExactly(3);

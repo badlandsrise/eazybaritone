@@ -326,6 +326,25 @@ public final class Settings {
     public final Setting<Boolean> buildIgnoreDirection = new Setting<>(false);
 
     /**
+     * If this is true, the builder skips positions it cannot currently place or break (for example
+     * unobtainable blocks such as potted plants or wall torches, or unreplaceable flowing liquids)
+     * and finishes the rest of the build, instead of pausing. Skipped positions are not revisited
+     * for the remainder of that build. The GUI/clipboard paste enables this per-build regardless of
+     * this global default.
+     */
+    public final Setting<Boolean> buildSkipUnplaceable = new Setting<>(false);
+
+    /**
+     * If this is true, the builder decides which item to place using the item's own
+     * placement logic instead of the block's, so item-and-block-differ cases work -
+     * most notably a torch item placing a wall torch on a side face. Only changes
+     * behaviour for items like {@code StandingAndWallBlockItem}; everything else is
+     * unaffected. The GUI/clipboard paste enables this per-build regardless of this
+     * global default.
+     */
+    public final Setting<Boolean> buildPlaceByItem = new Setting<>(false);
+
+    /**
      * A list of names of block properties the builder will ignore.
      */
     public final Setting<List<String>> buildIgnoreProperties = new Setting<>(new ArrayList<>(Arrays.asList(

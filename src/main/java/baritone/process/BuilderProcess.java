@@ -25,6 +25,7 @@ import baritone.api.pathing.goals.GoalGetToBlock;
 import baritone.api.process.IBuilderProcess;
 import baritone.api.process.PathingCommand;
 import baritone.api.process.PathingCommandType;
+import baritone.utils.accessor.IBlockItemAccessor;
 import baritone.api.schematic.*;
 import baritone.api.schematic.format.ISchematicFormat;
 import baritone.api.utils.*;
@@ -94,6 +95,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     public int stopAtHeight = 0;
     private Boolean forceBuildInLayers; // null = use Baritone.settings().buildInLayers.value
     private Boolean forceLayerOrder;    // null = use Baritone.settings().layerOrder.value
+    private Boolean forceSkipUnplaceable; // null = use Baritone.settings().buildSkipUnplaceable.value
+    private Boolean forcePlaceByItem;     // null = use Baritone.settings().buildPlaceByItem.value
+    private LongOpenHashSet skippedPositions; // positions we gave up on this build (never re-added to incorrectPositions)
+    private final List<BetterBlockPos> unactionable = new ArrayList<>(); // positions the last assemble() could not place/break
 
     public BuilderProcess(Baritone baritone) {
         super(baritone);
@@ -107,10 +112,28 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return forceLayerOrder != null ? forceLayerOrder : Baritone.settings().layerOrder.value;
     }
 
+    private boolean useSkipUnplaceable() {
+        return forceSkipUnplaceable != null ? forceSkipUnplaceable : Baritone.settings().buildSkipUnplaceable.value;
+    }
+
+    private boolean usePlaceByItem() {
+        return forcePlaceByItem != null ? forcePlaceByItem : Baritone.settings().buildPlaceByItem.value;
+    }
+
     @Override
     public void setLayerOverride(Boolean inLayers, Boolean topDown) {
         this.forceBuildInLayers = inLayers;
         this.forceLayerOrder = topDown;
+    }
+
+    @Override
+    public void setSkipUnplaceableOverride(Boolean skip) {
+        this.forceSkipUnplaceable = skip;
+    }
+
+    @Override
+    public void setPlaceByItemOverride(Boolean placeByItem) {
+        this.forcePlaceByItem = placeByItem;
     }
 
     @Override
@@ -120,6 +143,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         // interrupted sel build can never leak its override onto a later job.
         this.forceBuildInLayers = null;
         this.forceLayerOrder = null;
+        this.forceSkipUnplaceable = null;
+        this.forcePlaceByItem = null;
+        this.skippedPositions = new LongOpenHashSet();
         this.name = name;
         this.schematic = schematic;
         this.realSchematic = null;
@@ -424,7 +450,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     stack,
                     (BlockHitResult) result
             ) {}); // that {} gives us access to a protected constructor lmfao
-            BlockState wouldBePlaced = ((BlockItem) stack.getItem()).getBlock().getStateForPlacement(meme);
+            // Use the item's own placement logic (e.g. a torch item choosing a wall torch
+            // on a side face) rather than only the block's, when place-by-item is enabled.
+            BlockState wouldBePlaced = usePlaceByItem()
+                    ? ((IBlockItemAccessor) (Object) stack.getItem()).callGetPlacementState(meme)
+                    : ((BlockItem) stack.getItem()).getBlock().getStateForPlacement(meme);
             ctx.player().setYRot(originalYaw);
             ctx.player().setXRot(originalPitch);
             if (wouldBePlaced == null) {
@@ -620,6 +650,24 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (goal == null) {
             goal = assemble(bcc, approxPlaceable, true); // we're far away, so assume that we have our whole inventory to recalculate placeable properly
             if (goal == null) {
+                // Rather than give up on the whole build, retire the positions we can't
+                // currently place or break (unobtainable blocks like potted plants, wall
+                // torches, or unreplaceable flowing liquids) and carry on with the rest.
+                // Skipped positions are guarded out of future recalcs so the build can
+                // actually reach "Done" instead of re-discovering them forever.
+                if (useSkipUnplaceable() && !unactionable.isEmpty() && skippedPositions != null) {
+                    int newlySkipped = 0;
+                    for (BetterBlockPos p : unactionable) {
+                        if (skippedPositions.add(BetterBlockPos.longHash(p))) {
+                            newlySkipped++;
+                        }
+                    }
+                    incorrectPositions.removeAll(unactionable);
+                    if (newlySkipped > 0) {
+                        logDirect("Skipping " + newlySkipped + " block(s) I can't place here; continuing.");
+                        return onTick(calcFailed, isSafeToCancel, recursions + 1);
+                    }
+                }
                 if (Baritone.settings().skipFailedLayers.value && useBuildInLayers() && layer * Baritone.settings().layerHeight.value < realSchematic.heightY()) {
                     logDirect("Skipping layer that I cannot construct! Layer #" + layer);
                     layer++;
@@ -669,6 +717,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     if (desired != null) {
                         // we care about this position
                         BetterBlockPos pos = new BetterBlockPos(x, y, z);
+                        if (skippedPositions != null && skippedPositions.contains(BetterBlockPos.longHash(pos))) {
+                            continue; // we gave up on this position earlier; leave it out
+                        }
                         if (valid(bcc.bsi.get0(x, y, z), desired, false)) {
                             incorrectPositions.remove(pos);
                             observedCompleted.add(BetterBlockPos.longHash(pos));
@@ -693,6 +744,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     BlockState current = bcc.bsi.get0(blockX, blockY, blockZ);
                     if (!schematic.inSchematic(x, y, z, current)) {
                         continue;
+                    }
+                    if (skippedPositions != null && skippedPositions.contains(BetterBlockPos.longHash(blockX, blockY, blockZ))) {
+                        continue; // we gave up on this position earlier; never re-add it
                     }
                     if (bcc.bsi.worldContainsLoadedChunk(blockX, blockZ)) { // check if its in render distance, not if its in cache
                         // we can directly observe this block, it is in render distance
@@ -732,6 +786,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         List<BetterBlockPos> flowingLiquids = new ArrayList<>();
         Map<BlockState, Integer> missing = new HashMap<>();
         List<BetterBlockPos> outOfBounds = new ArrayList<>();
+        this.unactionable.clear();
         incorrectPositions.forEach(pos -> {
             BlockState state = bcc.bsi.get0(pos);
             if (state.getBlock() instanceof AirBlock) {
@@ -742,6 +797,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     placeable.add(pos);
                 } else {
                     missing.put(desired, 1 + missing.getOrDefault(desired, 0));
+                    unactionable.add(pos);
                 }
             } else {
                 if (state.getBlock() instanceof LiquidBlock) {
@@ -752,6 +808,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                         sourceLiquids.add(pos);
                     } else {
                         flowingLiquids.add(pos);
+                        unactionable.add(pos);
                     }
                 } else {
                     breakable.add(pos);
@@ -1006,6 +1063,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         observedCompleted = null;
         forceBuildInLayers = null;
         forceLayerOrder = null;
+        forceSkipUnplaceable = null;
+        forcePlaceByItem = null;
+        skippedPositions = null;
+        unactionable.clear();
     }
 
     @Override

@@ -79,6 +79,24 @@ public interface IBuilderProcess extends IBaritoneProcess {
     void setLayerOverride(Boolean inLayers, Boolean topDown);
 
     /**
+     * Overrides buildSkipUnplaceable for the NEXT build only (null = use the global setting).
+     * When enabled, the builder skips positions it cannot place or break (e.g. unobtainable
+     * blocks) and finishes, rather than pausing. Cleared automatically when the build ends.
+     *
+     * @param skip Whether to skip unplaceable positions, or {@code null} to use the global setting
+     */
+    void setSkipUnplaceableOverride(Boolean skip);
+
+    /**
+     * Overrides buildPlaceByItem for the NEXT build only (null = use the global setting).
+     * When enabled, the builder uses each item's own placement logic (so e.g. a torch
+     * item can place a wall torch). Cleared automatically when the build ends.
+     *
+     * @param placeByItem Whether to place by item logic, or {@code null} to use the global setting
+     */
+    void setPlaceByItemOverride(Boolean placeByItem);
+
+    /**
      * @return A list of block states that are estimated to be placeable by this builder process. You can use this in
      * schematics, for example, to pick a state that the builder process will be happy with, because any variation will
      * cause it to give up. This is updated every tick, but only while the builder process is active.
