@@ -271,6 +271,13 @@ public class BaritoneMenuScreen extends Screen {
         return 58 - globalScrollY;
     }
 
+    private <T extends net.minecraft.client.gui.components.AbstractWidget> void safeAdd(T widget) {
+        if (widget.getY() != 32 && widget.getY() < 55) {
+            return;
+        }
+        this.addRenderableWidget(widget);
+    }
+
     @Override
     protected void init() {
         this.activeSearchBox = null; // set by whichever tab has a search box this pass
@@ -287,7 +294,7 @@ public class BaritoneMenuScreen extends Screen {
                 this.rebuildWidgets();
             }).bounds(tabsLeft + t.ordinal() * (tabWidth + 2), 32, tabWidth, 20).build();
             b.active = t != this.tab;
-            this.addRenderableWidget(b);
+            this.safeAdd(b);
         }
 
         switch (this.tab) {
@@ -305,11 +312,11 @@ public class BaritoneMenuScreen extends Screen {
 
         // status bar controls (all tabs)
         int barY = this.height - 26;
-        this.addRenderableWidget(Button.builder(Component.literal("Pause"), b -> baritone().getCommandManager().execute("pause"))
+        this.safeAdd(Button.builder(Component.literal("Pause"), b -> baritone().getCommandManager().execute("pause"))
                 .bounds(this.width - 190, barY, 56, 20).build());
-        this.addRenderableWidget(Button.builder(Component.literal("Resume"), b -> baritone().getCommandManager().execute("resume"))
+        this.safeAdd(Button.builder(Component.literal("Resume"), b -> baritone().getCommandManager().execute("resume"))
                 .bounds(this.width - 130, barY, 56, 20).build());
-        this.addRenderableWidget(Button.builder(Component.literal("Stop").copy().withStyle(ChatFormatting.RED), b -> baritone().getCommandManager().execute("cancel"))
+        this.safeAdd(Button.builder(Component.literal("Stop").copy().withStyle(ChatFormatting.RED), b -> baritone().getCommandManager().execute("cancel"))
                 .bounds(this.width - 70, barY, 56, 20).build());
     }
 
@@ -342,14 +349,14 @@ public class BaritoneMenuScreen extends Screen {
             mineSearch = s;
             this.rebuildWidgets();
         });
-        this.addRenderableWidget(search);
+        this.safeAdd(search);
         this.activeSearchBox = search;
 
         EditBox qty = new EditBox(this.font, left + 210, top, 60, 18, Component.literal("amount"));
         qty.setHint(Component.literal("amount"));
         qty.setValue(mineQuantity);
         qty.setResponder(s -> mineQuantity = s.replaceAll("[^0-9]", ""));
-        this.addRenderableWidget(qty);
+        this.safeAdd(qty);
 
         addBlockGrid(mineSearch, PINNED_BLOCKS, top + 28, block -> {
             String id = BuiltInRegistries.BLOCK.getKey(block).getPath();
@@ -391,7 +398,7 @@ public class BaritoneMenuScreen extends Screen {
                     Component.literal(id.getPath()), icon,
                     () -> onPick.accept(block));
             btn.setTooltip(Tooltip.create(Component.literal(id.getPath().replace('_', ' '))));
-            this.addRenderableWidget(btn);
+            this.safeAdd(btn);
         }
     }
 
@@ -407,10 +414,10 @@ public class BaritoneMenuScreen extends Screen {
             pickerSearch = s;
             this.rebuildWidgets();
         });
-        this.addRenderableWidget(search);
+        this.safeAdd(search);
         this.activeSearchBox = search;
 
-        this.addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> {
+        this.safeAdd(Button.builder(Component.literal("Cancel"), b -> {
             blockPickTarget = 0;
             this.rebuildWidgets();
         }).bounds(left + 210, top - 1, 60, 20).build());
@@ -461,7 +468,7 @@ public class BaritoneMenuScreen extends Screen {
                     Component.literal(id.getPath()), icon,
                     () -> onPick.accept(item));
             btn.setTooltip(Tooltip.create(Component.literal(id.getPath().replace('_', ' '))));
-            this.addRenderableWidget(btn);
+            this.safeAdd(btn);
         }
     }
 
@@ -474,11 +481,11 @@ public class BaritoneMenuScreen extends Screen {
         EditBox x = coordBox(left, top, "X", gotoX, s -> gotoX = s);
         EditBox y = coordBox(left + 65, top, "Y (optional)", gotoY, s -> gotoY = s);
         EditBox z = coordBox(left + 130, top, "Z", gotoZ, s -> gotoZ = s);
-        this.addRenderableWidget(x);
-        this.addRenderableWidget(y);
-        this.addRenderableWidget(z);
+        this.safeAdd(x);
+        this.safeAdd(y);
+        this.safeAdd(z);
 
-        this.addRenderableWidget(Button.builder(Component.literal("Go!"), b -> {
+        this.safeAdd(Button.builder(Component.literal("Go!"), b -> {
             String xs = gotoX.trim(), ys = gotoY.trim(), zs = gotoZ.trim();
             if (xs.isEmpty() || zs.isEmpty()) {
                 statusMessage = "Enter at least X and Z";
@@ -491,7 +498,7 @@ public class BaritoneMenuScreen extends Screen {
             runCommand(ys.isEmpty() ? "goto " + xs + " " + zs : "goto " + xs + " " + ys + " " + zs);
         }).bounds(left + 200, top - 1, 50, 20).build());
 
-        this.addRenderableWidget(Button.builder(Component.literal("Go to surface"), b -> runCommand("surface"))
+        this.safeAdd(Button.builder(Component.literal("Go to surface"), b -> runCommand("surface"))
                 .bounds(left + 255, top - 1, 90, 20).build());
 
         // waypoints
@@ -499,9 +506,9 @@ public class BaritoneMenuScreen extends Screen {
         name.setHint(Component.literal("New waypoint name..."));
         name.setValue(waypointName);
         name.setResponder(s -> waypointName = s);
-        this.addRenderableWidget(name);
+        this.safeAdd(name);
 
-        this.addRenderableWidget(Button.builder(Component.literal("Save here"), b -> {
+        this.safeAdd(Button.builder(Component.literal("Save here"), b -> {
             String n = waypointName.trim().replace(' ', '_');
             if (n.isEmpty()) {
                 statusMessage = "Type a name for the waypoint first";
@@ -528,13 +535,13 @@ public class BaritoneMenuScreen extends Screen {
                 }
                 BetterBlockPos pos = wp.getLocation();
                 final int fy = rowY;
-                this.addRenderableWidget(Button.builder(
+                this.safeAdd(Button.builder(
                         Component.literal(wp.getName() + "  (" + pos.x + ", " + pos.y + ", " + pos.z + ")"),
                         b -> {
                             baritone().getCustomGoalProcess().setGoalAndPath(new GoalBlock(pos));
                             this.onClose();
                         }).bounds(left, fy, 220, 18).build());
-                this.addRenderableWidget(Button.builder(Component.literal("x").copy().withStyle(ChatFormatting.RED), b -> {
+                this.safeAdd(Button.builder(Component.literal("x").copy().withStyle(ChatFormatting.RED), b -> {
                     waypoints.removeWaypoint(wp);
                     this.rebuildWidgets();
                 }).bounds(left + 224, fy, 18, 18).build());
@@ -581,7 +588,7 @@ public class BaritoneMenuScreen extends Screen {
                 break;
             }
             String name = p.getGameProfile().name();
-            this.addRenderableWidget(Button.builder(Component.literal("Follow " + name), b -> runCommand("follow player " + name))
+            this.safeAdd(Button.builder(Component.literal("Follow " + name), b -> runCommand("follow player " + name))
                     .bounds(left, rowY, 200, 20).build());
             rowY += 24;
         }
@@ -597,9 +604,9 @@ public class BaritoneMenuScreen extends Screen {
         radius.setHint(Component.literal("radius"));
         radius.setValue(farmRadius);
         radius.setResponder(s -> farmRadius = s.replaceAll("[^0-9]", ""));
-        this.addRenderableWidget(radius);
+        this.safeAdd(radius);
 
-        this.addRenderableWidget(Button.builder(Component.literal("Start farming"), b -> {
+        this.safeAdd(Button.builder(Component.literal("Start farming"), b -> {
             String r = farmRadius.trim();
             runCommand(r.isEmpty() ? "farm" : "farm " + r);
         }).bounds(left + 70, top - 1, 110, 20).build());
@@ -616,12 +623,12 @@ public class BaritoneMenuScreen extends Screen {
         name.setHint(Component.literal("Name this schematic..."));
         name.setValue(savedName);
         name.setResponder(s -> savedName = s);
-        this.addRenderableWidget(name);
+        this.safeAdd(name);
 
         Button save = Button.builder(Component.literal("Save to disk"), b -> saveClipboardToDisk())
                 .bounds(left + 210, top - 1, 90, 20).build();
         save.active = ClipboardGhost.hasContent();
-        this.addRenderableWidget(save);
+        this.safeAdd(save);
 
         // list the .schem files in the schematics folder: Place (into the ghost flow) + delete
         File[] files = listSchemFiles();
@@ -632,9 +639,9 @@ public class BaritoneMenuScreen extends Screen {
             }
             final File file = f;
             String label = f.getName().substring(0, f.getName().length() - ".schem".length());
-            this.addRenderableWidget(Button.builder(Component.literal("Place: " + label), b -> placeFromDisk(file))
+            this.safeAdd(Button.builder(Component.literal("Place: " + label), b -> placeFromDisk(file))
                     .bounds(left, rowY, 240, 20).build());
-            this.addRenderableWidget(Button.builder(Component.literal("x").copy().withStyle(ChatFormatting.RED), b -> {
+            this.safeAdd(Button.builder(Component.literal("x").copy().withStyle(ChatFormatting.RED), b -> {
                 if (file.delete()) {
                     statusMessage = "Deleted " + file.getName();
                 }
@@ -721,7 +728,7 @@ public class BaritoneMenuScreen extends Screen {
         }
 
         // Auto left-click (attack) on an interval
-        this.addRenderableWidget(CycleButton.onOffBuilder(MacroManager.isAutoAttack())
+        this.safeAdd(CycleButton.onOffBuilder(MacroManager.isAutoAttack())
                 .create(left, top, w, 20, Component.literal("Auto-click left (attack)"),
                         (btn, val) -> MacroManager.setAutoAttack(val)));
         EditBox attackSecs = new EditBox(this.font, left + w + 10, top + 1, 55, 18, Component.literal("secs"));
@@ -731,10 +738,10 @@ public class BaritoneMenuScreen extends Screen {
             macroAttackSecs = sanitizeSeconds(s);
             MacroManager.setAutoAttackSeconds(parseSeconds(macroAttackSecs, 0.5));
         });
-        this.addRenderableWidget(attackSecs);
+        this.safeAdd(attackSecs);
 
         // Auto right-click (use) on an interval
-        this.addRenderableWidget(CycleButton.onOffBuilder(MacroManager.isAutoUse())
+        this.safeAdd(CycleButton.onOffBuilder(MacroManager.isAutoUse())
                 .create(left, top + 26, w, 20, Component.literal("Auto-click right (use)"),
                         (btn, val) -> MacroManager.setAutoUse(val)));
         EditBox useSecs = new EditBox(this.font, left + w + 10, top + 27, 55, 18, Component.literal("secs"));
@@ -744,15 +751,15 @@ public class BaritoneMenuScreen extends Screen {
             macroUseSecs = sanitizeSeconds(s);
             MacroManager.setAutoUseSeconds(parseSeconds(macroUseSecs, 0.5));
         });
-        this.addRenderableWidget(useSecs);
+        this.safeAdd(useSecs);
 
         // Hold left-click (continuous mine/attack)
-        this.addRenderableWidget(CycleButton.onOffBuilder(MacroManager.isHoldAttack())
+        this.safeAdd(CycleButton.onOffBuilder(MacroManager.isHoldAttack())
                 .create(left, top + 56, w, 20, Component.literal("Hold left (mine/attack)"),
                         (btn, val) -> MacroManager.setHoldAttack(val)));
 
         // Hold right-click (continuous use)
-        this.addRenderableWidget(CycleButton.onOffBuilder(MacroManager.isHoldUse())
+        this.safeAdd(CycleButton.onOffBuilder(MacroManager.isHoldUse())
                 .create(left, top + 82, w, 20, Component.literal("Hold right (use)"),
                         (btn, val) -> MacroManager.setHoldUse(val)));
     }
@@ -807,10 +814,10 @@ public class BaritoneMenuScreen extends Screen {
             pickerSearch = s;
             this.rebuildWidgets();
         });
-        this.addRenderableWidget(search);
+        this.safeAdd(search);
         this.activeSearchBox = search;
 
-        this.addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> {
+        this.safeAdd(Button.builder(Component.literal("Cancel"), b -> {
             blockPickTarget = 0;
             this.rebuildWidgets();
         }).bounds(left + 210, top - 1, 60, 20).build());
@@ -852,9 +859,9 @@ public class BaritoneMenuScreen extends Screen {
         int left = contentLeft();
         int top = contentTop();
 
-        this.addRenderableWidget(Button.builder(Component.literal("Corner 1 = here"), b -> runCommandKeepOpen("sel pos1"))
+        this.safeAdd(Button.builder(Component.literal("Corner 1 = here"), b -> runCommandKeepOpen("sel pos1"))
                 .bounds(left, top, 145, 20).build());
-        this.addRenderableWidget(Button.builder(Component.literal("Corner 2 = here"), b -> runCommandKeepOpen("sel pos2"))
+        this.safeAdd(Button.builder(Component.literal("Corner 2 = here"), b -> runCommandKeepOpen("sel pos2"))
                 .bounds(left + 150, top, 145, 20).build());
 
         boolean hasSelection = baritone().getSelectionManager().getSelections().length > 0;
@@ -862,12 +869,12 @@ public class BaritoneMenuScreen extends Screen {
         Button clear = Button.builder(Component.literal("Clear area (dig it out)").copy().withStyle(ChatFormatting.RED),
                 b -> runCommand("sel cleararea")).bounds(left, top + 24, 145, 20).build();
         clear.active = hasSelection;
-        this.addRenderableWidget(clear);
+        this.safeAdd(clear);
 
         Button deselect = Button.builder(Component.literal("Deselect"), b -> runCommandKeepOpen("sel clear"))
                 .bounds(left + 150, top + 24, 70, 20).build();
         deselect.active = hasSelection;
-        this.addRenderableWidget(deselect);
+        this.safeAdd(deselect);
 
         // wand item picker (icon of the current wand item; click to change)
         Item wand = baritone.utils.SelectionWand.wandItem();
@@ -877,11 +884,11 @@ public class BaritoneMenuScreen extends Screen {
                     Component.literal("wand item"), wandIcon, () -> openPicker(6));
             wandBtn.setTooltip(Tooltip.create(Component.literal(
                     "Wand item: " + BuiltInRegistries.ITEM.getKey(wand).getPath() + "  (click to change)")));
-            this.addRenderableWidget(wandBtn);
+            this.safeAdd(wandBtn);
         }
 
         // fill block picker + shape buttons
-        this.addRenderableWidget(Button.builder(
+        this.safeAdd(Button.builder(
                 Component.literal(areaFillBlock.isEmpty() ? "Choose fill block..." : "Fill block: " + areaFillBlock),
                 b -> openPicker(4)).bounds(left, top + 52, 300, 20).build());
 
@@ -894,19 +901,19 @@ public class BaritoneMenuScreen extends Screen {
                     b -> runCommand("sel " + action + " " + areaFillBlock))
                     .bounds(left + col * 102, gridTop + row * 22, 97, 20).build();
             shape.active = canFill;
-            this.addRenderableWidget(shape);
+            this.safeAdd(shape);
         }
 
         // Replace: swap one existing block for the fill block, everything else untouched
         int replaceTop = gridTop + ((AREA_SHAPES.length + 2) / 3) * 22 + 4;
-        this.addRenderableWidget(Button.builder(
+        this.safeAdd(Button.builder(
                 Component.literal(areaReplaceFrom.isEmpty() ? "Replace which block..." : "Replace: " + areaReplaceFrom),
                 b -> openPicker(5)).bounds(left, replaceTop, 195, 20).build());
         Button replace = Button.builder(Component.literal("Replace → fill"),
                 b -> runCommand("sel replace " + areaReplaceFrom + " " + areaFillBlock))
                 .bounds(left + 200, replaceTop, 100, 20).build();
         replace.active = canFill && !areaReplaceFrom.isEmpty();
-        this.addRenderableWidget(replace);
+        this.safeAdd(replace);
 
         // Nudge the whole selection one block on any axis. Each column is one axis;
         // the outline re-renders itself from the SelectionManager, so we just shift it.
@@ -924,7 +931,7 @@ public class BaritoneMenuScreen extends Screen {
         Button b = Button.builder(Component.literal(label), btn -> runCommandKeepOpen("sel shift all " + direction + " 1"))
                 .bounds(x, y, 97, 20).build();
         b.active = enabled;
-        this.addRenderableWidget(b);
+        this.safeAdd(b);
     }
 
     private void runCommandKeepOpen(String command) {
@@ -947,22 +954,22 @@ public class BaritoneMenuScreen extends Screen {
             addNudgeButton("Move Down", 0, -1, 0, left, top + 48);
             addNudgeButton("Move Up", 0, 1, 0, left + 150, top + 48);
 
-            this.addRenderableWidget(Button.builder(Component.literal("Rotate 90°"), b -> {
+            this.safeAdd(Button.builder(Component.literal("Rotate 90°"), b -> {
                 baritone.utils.ClipboardGhost.rotateCW();
                 this.rebuildWidgets();
             }).bounds(left, top + 72, 145, 20).build());
-            this.addRenderableWidget(Button.builder(
+            this.safeAdd(Button.builder(
                     Component.literal("Mirror: " + mirrorName(baritone.utils.ClipboardGhost.mirror())), b -> {
                         baritone.utils.ClipboardGhost.cycleMirror();
                         this.rebuildWidgets();
                     }).bounds(left + 150, top + 72, 145, 20).build());
 
-            this.addRenderableWidget(Button.builder(
+            this.safeAdd(Button.builder(
                     Component.literal("Build here").copy().withStyle(ChatFormatting.GREEN), b -> {
                         baritone.utils.ClipboardGhost.build();
                         this.onClose();
                     }).bounds(left, top + 100, 145, 20).build());
-            this.addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> {
+            this.safeAdd(Button.builder(Component.literal("Cancel"), b -> {
                 baritone.utils.ClipboardGhost.cancel();
                 this.rebuildWidgets();
             }).bounds(left + 150, top + 100, 145, 20).build());
@@ -977,7 +984,7 @@ public class BaritoneMenuScreen extends Screen {
             this.rebuildWidgets();
         }).bounds(left, top, 145, 20).build();
         copy.active = hasSelection;
-        this.addRenderableWidget(copy);
+        this.safeAdd(copy);
 
         Button cut = Button.builder(Component.literal("Cut selection").copy().withStyle(ChatFormatting.RED), b -> {
             baritone().getCommandManager().execute("sel copy");
@@ -985,25 +992,25 @@ public class BaritoneMenuScreen extends Screen {
             this.rebuildWidgets();
         }).bounds(left + 150, top, 145, 20).build();
         cut.active = hasSelection;
-        this.addRenderableWidget(cut);
+        this.safeAdd(cut);
 
         Button place = Button.builder(Component.literal("Place paste (ghost)"), b -> {
             baritone.utils.ClipboardGhost.startPlacing(baritone().getPlayerContext().playerFeet());
             this.rebuildWidgets();
         }).bounds(left, top + 24, 145, 20).build();
         place.active = hasContent;
-        this.addRenderableWidget(place);
+        this.safeAdd(place);
 
         Button clear = Button.builder(Component.literal("Clear clipboard"), b -> {
             baritone.utils.ClipboardGhost.clearClipboard();
             this.rebuildWidgets();
         }).bounds(left + 150, top + 24, 145, 20).build();
         clear.active = hasContent;
-        this.addRenderableWidget(clear);
+        this.safeAdd(clear);
     }
 
     private void addNudgeButton(String label, int dx, int dy, int dz, int x, int y) {
-        this.addRenderableWidget(Button.builder(Component.literal(label), b -> {
+        this.safeAdd(Button.builder(Component.literal(label), b -> {
             baritone.utils.ClipboardGhost.nudge(dx, dy, dz);
             this.rebuildWidgets();
         }).bounds(x, y, 145, 20).build());
@@ -1106,7 +1113,7 @@ public class BaritoneMenuScreen extends Screen {
             settingsPage = 0;
             this.rebuildWidgets();
         });
-        this.addRenderableWidget(search);
+        this.safeAdd(search);
         this.activeSearchBox = search;
 
         // Build the display order: curated common settings first, then the rest
@@ -1135,7 +1142,7 @@ public class BaritoneMenuScreen extends Screen {
             if (s.value instanceof Boolean) {
                 @SuppressWarnings("unchecked")
                 Settings.Setting<Boolean> bs = (Settings.Setting<Boolean>) s;
-                this.addRenderableWidget(CycleButton.onOffBuilder(bs.value).displayOnlyValue()
+                this.safeAdd(CycleButton.onOffBuilder(bs.value).displayOnlyValue()
                         .create(ctrlX, rowY, SETTINGS_CTRL_W, 20, Component.literal(labelFor(s)), (btn, val) -> {
                             bs.value = val;
                             SettingsUtil.save(settings);
@@ -1152,9 +1159,9 @@ public class BaritoneMenuScreen extends Screen {
                 box.setValue(current);
                 // No per-keystroke apply (partial/empty input threw and silently dropped the
                 // edit). The "Set" button commits deliberately - and can clear a list to empty.
-                this.addRenderableWidget(box);
+                this.safeAdd(box);
                 final Settings.Setting<?> setting = s;
-                this.addRenderableWidget(Button.builder(Component.literal("Set"),
+                this.safeAdd(Button.builder(Component.literal("Set"),
                         b -> applySetting(settings, setting, box.getValue().trim()))
                         .bounds(ctrlX - 34, rowY, 30, 20).build());
             }
@@ -1167,14 +1174,14 @@ public class BaritoneMenuScreen extends Screen {
             this.rebuildWidgets();
         }).bounds(left, barY, 60, 20).build();
         prev.active = settingsPage > 0;
-        this.addRenderableWidget(prev);
+        this.safeAdd(prev);
 
         Button next = Button.builder(Component.literal("Next >"), b -> {
             settingsPage++;
             this.rebuildWidgets();
         }).bounds(left + listWidth - 60, barY, 60, 20).build();
         next.active = settingsPage < totalPages - 1;
-        this.addRenderableWidget(next);
+        this.safeAdd(next);
 
         settingsPageInfo = "Page " + (settingsPage + 1) + " / " + totalPages + "   (" + matches.size() + " shown)";
     }
@@ -1227,7 +1234,7 @@ public class BaritoneMenuScreen extends Screen {
             if (s.value instanceof Boolean) {
                 @SuppressWarnings("unchecked")
                 Settings.Setting<Boolean> bs = (Settings.Setting<Boolean>) s;
-                this.addRenderableWidget(CycleButton.onOffBuilder(bs.value).displayOnlyValue()
+                this.safeAdd(CycleButton.onOffBuilder(bs.value).displayOnlyValue()
                         .create(ctrlX, rowY, SETTINGS_CTRL_W, 20, Component.literal(entry[1]), (btn, val) -> {
                             bs.value = val;
                             SettingsUtil.save(settings);
@@ -1242,9 +1249,9 @@ public class BaritoneMenuScreen extends Screen {
                 EditBox box = new EditBox(this.font, ctrlX, rowY + 1, SETTINGS_CTRL_W, 18, Component.literal(entry[1]));
                 box.setMaxLength(512);
                 box.setValue(current);
-                this.addRenderableWidget(box);
+                this.safeAdd(box);
                 final Settings.Setting<?> setting = s;
-                this.addRenderableWidget(Button.builder(Component.literal("Set"),
+                this.safeAdd(Button.builder(Component.literal("Set"),
                         b -> applySetting(settings, setting, box.getValue().trim()))
                         .bounds(ctrlX - 34, rowY, 30, 20).build());
             }
@@ -1288,7 +1295,7 @@ public class BaritoneMenuScreen extends Screen {
         if (this.tab == Tab.AREA && blockPickTarget == 0) {
             int y = contentTop() + 222; // below the nudge-button cluster (last row bottoms at +214)
             for (String line : areaInfoLines()) {
-                extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
+                if (y >= 55) extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
                 y += 11;
             }
         }
@@ -1296,7 +1303,7 @@ public class BaritoneMenuScreen extends Screen {
         if (this.tab == Tab.CLIPBOARD) {
             int y = contentTop() + (baritone.utils.ClipboardGhost.isPlacing() ? 128 : 56);
             for (String line : clipboardInfoLines()) {
-                extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
+                if (y >= 55) extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
                 y += 11;
             }
         }
@@ -1328,7 +1335,7 @@ public class BaritoneMenuScreen extends Screen {
                     "Close this menu (B) for the macros to take effect."
             };
             for (String line : lines) {
-                extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
+                if (y >= 55) extractor.text(this.font, line, contentLeft(), y, 0xFFDDDDDD, true);
                 y += 11;
             }
         }
