@@ -219,6 +219,7 @@ public class BaritoneMenuScreen extends Screen {
     // Settings tab: search + paging over the full ~200-setting list
     private String settingsSearch = "";
     private int settingsPage = 0;
+    private int settingsTotalPages = 1;
     private String settingsPageInfo = "";
     private int settingsLeftX = 0; // left edge of the settings list (set in init, used in render)
     private final List<SettingRow> settingRows = new ArrayList<>();
@@ -260,12 +261,14 @@ public class BaritoneMenuScreen extends Screen {
         return false;
     }
 
+    private int globalScrollY = 0;
+
     private int contentLeft() {
         return this.width / 2 - 150;
     }
 
     private int contentTop() {
-        return 58;
+        return 58 - globalScrollY;
     }
 
     @Override
@@ -279,6 +282,8 @@ public class BaritoneMenuScreen extends Screen {
             Button b = Button.builder(Component.literal(t.label), btn -> {
                 this.tab = t;
                 this.statusMessage = "";
+                this.globalScrollY = 0;
+                this.settingsPage = 0;
                 this.rebuildWidgets();
             }).bounds(tabsLeft + t.ordinal() * (tabWidth + 2), 32, tabWidth, 20).build();
             b.active = t != this.tab;
@@ -1118,6 +1123,7 @@ public class BaritoneMenuScreen extends Screen {
         }
 
         int totalPages = Math.max(1, (matches.size() + SETTINGS_PAGE_SIZE - 1) / SETTINGS_PAGE_SIZE);
+        this.settingsTotalPages = totalPages;
         settingsPage = Math.max(0, Math.min(settingsPage, totalPages - 1));
         int startIdx = settingsPage * SETTINGS_PAGE_SIZE;
         int endIdx = Math.min(matches.size(), startIdx + SETTINGS_PAGE_SIZE);
@@ -1369,5 +1375,30 @@ public class BaritoneMenuScreen extends Screen {
     @Override
     public void extractBackground(GuiGraphicsExtractor extractor, int mouseX, int mouseY, float partialTicks) {
         // keep the world visible behind the menu
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        if (this.tab == Tab.SETTINGS) {
+            if (verticalAmount > 0 && settingsPage > 0) {
+                settingsPage--;
+                this.rebuildWidgets();
+                return true;
+            } else if (verticalAmount < 0 && settingsPage < settingsTotalPages - 1) {
+                settingsPage++;
+                this.rebuildWidgets();
+                return true;
+            }
+        } else {
+            if (verticalAmount != 0) {
+                globalScrollY -= (int) (verticalAmount * 24);
+                if (globalScrollY < 0) globalScrollY = 0;
+                // soft max cap so they don't scroll infinitely into nothingness
+                if (globalScrollY > 2000) globalScrollY = 2000; 
+                this.rebuildWidgets();
+                return true;
+            }
+        }
+        return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
 }
