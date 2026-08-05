@@ -25,16 +25,28 @@ import baritone.api.schematic.RotatedSchematic;
 import baritone.api.utils.BetterBlockPos;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
+import net.minecraft.client.renderer.Sheets;
+import net.minecraft.client.renderer.state.level.LevelRenderState;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
+import net.minecraft.util.ARGB;
+import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import java.awt.Color;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The copy/paste "placement mode": after copying, the clipboard is shown as a
@@ -52,6 +64,8 @@ public final class ClipboardGhost implements IRenderer {
     private static final int CONTENT_VOLUME_CAP = 20000;
     /** Hard limit on outlined blocks, to protect the renderer. */
     private static final int CONTENT_BOX_CAP = 1024;
+    /** Hard limit on translucent ghost block models submitted per frame. */
+    private static final int GHOST_MODEL_CAP = 4096;
 
     private static final Color FOOTPRINT_COLOR = new Color(90, 220, 255);
     private static final Color CONTENT_COLOR = new Color(160, 235, 255);
@@ -110,6 +124,7 @@ public final class ClipboardGhost implements IRenderer {
         rotation = Rotation.NONE;
         mirror = Mirror.NONE;
         placing = true;
+        ghostModelCache.clear(); // re-resolve models each placement session (survives resource reloads)
     }
 
     public static void cancel() {
@@ -196,6 +211,11 @@ public final class ClipboardGhost implements IRenderer {
         if ((long) w * h * l > CONTENT_VOLUME_CAP) {
             return;
         }
+        // When ghost block models are drawn (submitGhostBlocks), per-block wireframes are
+        // redundant - except for blocks whose models render specially (chests etc.), which
+        // the ghost pass can't draw, so those keep their outline box. Wireframes only yield
+        // once the ghost pass has actually run - if its hook never fires, they stay.
+        boolean ghosts = settings.ghostBlocks.value && ghostPassAlive;
         List<BlockState> none = Collections.emptyList();
         VertexConsumer content = IRenderer.startLines(CONTENT_COLOR, opacity * 0.55f);
         int drawn = 0;
@@ -215,6 +235,12 @@ public final class ClipboardGhost implements IRenderer {
                     if (state == null || state.isAir()) {
                         continue;
                     }
+                    if (ghosts) {
+                        GhostModel model = ghostModelCache.get(state);
+                        if (model == null || !model.parts.isEmpty()) {
+                            continue; // ghost model drawn (or will be next frame) - no wireframe
+                        }
+                    }
                     IRenderer.emitAABB(content, stack,
                             new AABB(baseX + x, baseY + y, baseZ + z,
                                     baseX + x + 1, baseY + y + 1, baseZ + z + 1),
@@ -226,5 +252,114 @@ public final class ClipboardGhost implements IRenderer {
             }
         }
         IRenderer.endLines(content, ignoreDepth);
+    }
+
+    // ------------------------------------------------------- ghost block models
+
+    /** A block state's resolved model, ready to submit each frame. */
+    private record GhostModel(List<BlockStateModelPart> parts, int[] tints) {}
+
+    private static final Map<BlockState, GhostModel> ghostModelCache = new HashMap<>();
+    /** Set the first time the submit hook runs; until then the wireframes don't yield. */
+    private static boolean ghostPassAlive;
+
+    /**
+     * Litematica-style paste preview: submits each missing/mismatched block of the
+     * ghost as a translucent block model through the vanilla submit pipeline (26.2),
+     * so you see exactly what will be built. Called from {@code MixinWorldRenderer}
+     * during {@code LevelRenderer#submitFeatures}.
+     */
+    public static void submitGhostBlocks(LevelRenderState frame, SubmitNodeCollector collector) {
+        if (!placing || !hasContent() || placePos == null || !settings.ghostBlocks.value) {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        ClientLevel level = mc.level;
+        if (level == null || frame.cameraRenderState == null || !frame.cameraRenderState.initialized) {
+            return;
+        }
+        ISchematic d = display();
+        int baseX = placePos.getX(), baseY = placePos.getY(), baseZ = placePos.getZ();
+        int w = d.widthX(), h = d.heightY(), l = d.lengthZ();
+        if ((long) w * h * l > CONTENT_VOLUME_CAP) {
+            return; // footprint box only, same as the wireframe path
+        }
+
+        ghostPassAlive = true;
+
+        float alpha = Math.max(0f, Math.min(1f, settings.ghostBlockOpacity.value));
+        int tintColor = ARGB.color((int) (alpha * 255), 255, 255, 255);
+        Vec3 cam = frame.cameraRenderState.pos;
+        List<BlockState> none = Collections.emptyList();
+        BlockPos.MutableBlockPos worldPos = new BlockPos.MutableBlockPos();
+        PoseStack pose = new PoseStack();
+        int submitted = 0;
+
+        outer:
+        for (int y = 0; y < h; y++) {
+            for (int z = 0; z < l; z++) {
+                for (int x = 0; x < w; x++) {
+                    if (!d.inSchematic(x, y, z, null)) {
+                        continue;
+                    }
+                    BlockState state;
+                    try {
+                        state = d.desiredState(x, y, z, null, none);
+                    } catch (Exception e) {
+                        continue;
+                    }
+                    if (state == null || state.isAir()) {
+                        continue;
+                    }
+                    worldPos.set(baseX + x, baseY + y, baseZ + z);
+                    if (level.getBlockState(worldPos) == state) {
+                        continue; // world already matches - the real block speaks for itself
+                    }
+                    GhostModel model = ghostModelCache.get(state);
+                    if (model == null) {
+                        model = resolveGhostModel(state);
+                        ghostModelCache.put(state, model);
+                    }
+                    if (model.parts.isEmpty()) {
+                        continue; // specially-rendered block (chest etc.) - wireframe covers it
+                    }
+                    pose.pushPose();
+                    pose.translate(worldPos.getX() - cam.x, worldPos.getY() - cam.y, worldPos.getZ() - cam.z);
+                    collector.submitBlockModel(pose, Sheets.translucentBlockItemSheet(), model.parts,
+                            model.tints, LightCoordsUtil.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, tintColor);
+                    pose.popPose();
+                    if (++submitted >= GHOST_MODEL_CAP) {
+                        break outer;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Resolves a block state's baked model parts once; reused every frame.
+     * <p>
+     * Goes straight to the public model dispatch ({@code ModelManager ->
+     * BlockStateModelSet -> collectParts} into our own list), which sidesteps the
+     * {@code BlockModelRenderState} scratch-object dance entirely. Tints resolve
+     * through {@code BlockColors} so grass/leaves ghost in the right color.
+     */
+    private static GhostModel resolveGhostModel(BlockState state) {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            List<BlockStateModelPart> parts = new java.util.ArrayList<>();
+            mc.getModelManager().getBlockStateModelSet().get(state)
+                    .collectParts(net.minecraft.util.RandomSource.create(42L), parts);
+            List<net.minecraft.client.color.block.BlockTintSource> sources = mc.getBlockColors().getTintSources(state);
+            int[] tints = new int[sources.size()];
+            for (int i = 0; i < tints.length; i++) {
+                tints[i] = sources.get(i).color(state);
+            }
+            return new GhostModel(List.copyOf(parts), tints);
+        } catch (Throwable e) {
+            // resolved once per state, so this can't spam; empty model = wireframe fallback
+            System.out.println("[EazyBaritone] ghost model resolve failed for " + state + ": " + e);
+            return new GhostModel(List.of(), new int[0]);
+        }
     }
 }

@@ -1435,6 +1435,18 @@ public final class Settings {
     public final Setting<Boolean> renderSelectionCorners = new Setting<>(true);
 
     /**
+     * Render the clipboard/schematic paste preview as translucent ghost blocks (Litematica-style),
+     * showing the actual block models that will be built. When false, falls back to the classic
+     * per-block wireframe outlines.
+     */
+    public final Setting<Boolean> ghostBlocks = new Setting<>(true);
+
+    /**
+     * Opacity of ghost preview blocks. 0 is completely transparent, 1 is completely opaque.
+     */
+    public final Setting<Float> ghostBlockOpacity = new Setting<>(.5f);
+
+    /**
      * Use sword to mine.
      */
     public final Setting<Boolean> useSwordToMine = new Setting<>(true);

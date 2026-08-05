@@ -23,6 +23,8 @@ import baritone.api.event.events.RenderEvent;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.gizmos.Gizmos;
 import net.minecraft.gizmos.SimpleGizmoCollector;
 import org.joml.Matrix4f;
@@ -61,6 +63,31 @@ public class MixinWorldRenderer {
             require = 0
     )
     private void baritoneRenderPass(final CallbackInfo ci) {
+        baritoneRenderPassImpl();
+    }
+
+    /**
+     * Ghost-block preview: the clipboard paste rendered as translucent block
+     * models (Litematica-style) through the vanilla submit pipeline.
+     * {@code submitFeatures} is where vanilla submits entities/block-entities,
+     * so the collector accepts our block-model submits here and depth-sorts
+     * the translucent geometry with everything else in the frame.
+     */
+    @Inject(
+            method = "submitFeatures",
+            at = @At("HEAD"),
+            require = 0
+    )
+    private void baritoneSubmitGhostBlocks(final LevelRenderState levelRenderState, final SubmitNodeCollector collector, final boolean bl, final CallbackInfo ci) {
+        try {
+            baritone.utils.ClipboardGhost.submitGhostBlocks(levelRenderState, collector);
+        } catch (Throwable t) {
+            // never let the ghost preview crash the frame
+            t.printStackTrace();
+        }
+    }
+
+    private void baritoneRenderPassImpl() {
         Minecraft mc = Minecraft.getInstance();
         float partialTicks = mc.getDeltaTracker().getGameTimeDeltaPartialTick(false);
         PoseStack poseStack = new PoseStack();

@@ -241,7 +241,7 @@ public class SelCommand extends Command {
                 ISchematic schematic = new StaticSchematic(blockstates);
                 composite.put(schematic, min.x - origin.x, min.y - origin.y, min.z - origin.z);
             }
-            logDirect("Copied from world: " + copiedRaw);
+            logDebug("Copied from world: " + copiedRaw);
             clipboard = composite;
             // TEMP diagnostic: read the stored clipboard the same way the builder does
             try {
@@ -262,7 +262,7 @@ public class SelCommand extends Command {
                         }
                     }
                 }
-                logDirect("Clipboard has: " + clip);
+                logDebug("Clipboard has: " + clip);
             } catch (RuntimeException ignored) {
             }
             clipboardOffset = origin.subtract(pos);

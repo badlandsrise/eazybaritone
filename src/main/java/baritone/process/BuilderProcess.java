@@ -296,7 +296,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     }
                 }
             }
-            logDirect("Building wants: " + wants);
+            logDebug("Building wants: " + wants);
             logDirect("  excluded-by-inSchematic: " + excludedByMask + " | desiredState-threw: " + threw
                     + " | schematic=" + sc.getClass().getSimpleName()
                     + " | buildSkipBlocks=" + Baritone.settings().buildSkipBlocks.value.size());
@@ -713,7 +713,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             for (Block b : placeableFamily) {
                 f.add(b.toString());
             }
-            logDirect("Placeable family (hotbar can make): " + f);
+            logDebug("Placeable family (hotbar can make): " + f);
         }
         if (baritone.getInputOverrideHandler().isInputForcedDown(Input.CLICK_LEFT)) {
             ticks = 5;
@@ -819,7 +819,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             // improve it from where we can stand (e.g. a stair we can't orient from above). Leave
             // it as-is and move on, rather than rebreak/replace it forever.
             if (!(bcc.bsi.get0(detailCurrent).getBlock() instanceof AirBlock)) {
-                logDirect("Detail: placed wrong at " + detailCurrent + " (wanted " + bcc.getSchematic(detailCurrent.x, detailCurrent.y, detailCurrent.z, bcc.bsi.get0(detailCurrent)) + "), leaving it");
+                logDebug("Detail: placed wrong at " + detailCurrent + " (wanted " + bcc.getSchematic(detailCurrent.x, detailCurrent.y, detailCurrent.z, bcc.bsi.get0(detailCurrent)) + "), leaving it");
                 detailRetireCurrent();
                 detailAdvance(bcc);
                 return onTick(calcFailed, isSafeToCancel, recursions + 1);
@@ -834,7 +834,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             // cap regardless of pathing state - so the sweep terminates even if isPathing() never
             // goes false for an unreachable target.
             if (detailIdleTicks > DETAIL_IDLE_LIMIT || detailCurrentTicks > DETAIL_HARD_LIMIT) {
-                logDirect("Detail: couldn't reach/place " + detailCurrent + " (wanted " + bcc.getSchematic(detailCurrent.x, detailCurrent.y, detailCurrent.z, bcc.bsi.get0(detailCurrent)) + "), skipping");
+                logDebug("Detail: couldn't reach/place " + detailCurrent + " (wanted " + bcc.getSchematic(detailCurrent.x, detailCurrent.y, detailCurrent.z, bcc.bsi.get0(detailCurrent)) + "), skipping");
                 detailRetireCurrent();
                 detailAdvance(bcc);
                 return onTick(calcFailed, isSafeToCancel, recursions + 1);
@@ -941,7 +941,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                             placeNudgeTarget = step;
                             placeNudgeTicks = PLACE_NUDGE_TICKS;
                             placeNudgeAttempts++;
-                            logDirect("Nudge: re-approaching a block I couldn't place from here (try " + placeNudgeAttempts + "/" + PLACE_MAX_NUDGES + ")");
+                            logDebug("Nudge: re-approaching a block I couldn't place from here (try " + placeNudgeAttempts + "/" + PLACE_MAX_NUDGES + ")");
                             return new PathingCommandContext(placeNudgeGoal, PathingCommandType.FORCE_REVALIDATE_GOAL_AND_PATH, bcc);
                         }
                         placeNudgeAttempts = PLACE_MAX_NUDGES; // nowhere to step; stop trying at this spot
@@ -1156,7 +1156,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 types.add(d.getBlock().toString());
             }
         }
-        logDirect("Detail pass: " + detailQueue.size() + " block(s): " + types);
+        logDebug("Detail pass: " + detailQueue.size() + " block(s): " + types);
         detailAdvance(bcc);
     }
 
