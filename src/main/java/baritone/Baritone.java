@@ -58,7 +58,11 @@ public class Baritone implements IBaritone {
     private static final ThreadPoolExecutor threadPool;
 
     static {
-        threadPool = new ThreadPoolExecutor(4, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS, new SynchronousQueue<>());
+        threadPool = new ThreadPoolExecutor(4, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS, new SynchronousQueue<>(), r -> {
+            Thread t = new Thread(r, "Baritone-Executor");
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     private final Minecraft mc;
