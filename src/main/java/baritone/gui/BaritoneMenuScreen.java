@@ -25,6 +25,7 @@ import baritone.api.cache.IWaypointCollection;
 import baritone.api.cache.Waypoint;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalBlock;
+import baritone.api.pathing.goals.GoalXZ;
 import baritone.api.process.IBaritoneProcess;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.schematic.IStaticSchematic;
@@ -48,6 +49,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 
 import java.io.File;
@@ -204,7 +206,7 @@ public class BaritoneMenuScreen extends Screen {
     private String savedName = "";       // name typed in the Saved tab for the next save
     private String areaFillBlock = ""; // fill/placement block chosen in the Area tab
     private String areaReplaceFrom = ""; // block that Replace looks for and swaps out
-    private int blockPickTarget = 0; // 0 = none, 4 = area fill, 5 = area replace-from, 6 = wand item
+    private int blockPickTarget = 0; // 0 = none, 4 = area fill, 5 = area replace-from, 6 = wand item, 7 = goto destination block
     private String pickerSearch = "";
     private String statusMessage = "";
 
@@ -234,6 +236,12 @@ public class BaritoneMenuScreen extends Screen {
             "blaze_rod", "stick", "bone", "feather", "breeze_rod",
             "wooden_axe", "golden_hoe", "wooden_shovel", "brush", "clock",
             "compass", "name_tag"
+    };
+
+    // destinations people walk to rather than mine (no-search default set for "Go to a block")
+    private static final String[] GOTO_PICKS = {
+            "diamond_ore", "iron_ore", "ancient_debris", "spawner", "chest", "ender_chest",
+            "end_portal_frame", "obsidian", "bell", "beacon", "lodestone", "enchanting_table"
     };
 
     private static final String[] COMMON_PICKS = {
@@ -475,6 +483,10 @@ public class BaritoneMenuScreen extends Screen {
     // ------------------------------------------------------------------ GOTO
 
     private void initGoto() {
+        if (blockPickTarget == 7) {
+            initGotoBlockPicker();
+            return;
+        }
         int left = contentLeft();
         int top = contentTop();
 
@@ -501,8 +513,39 @@ public class BaritoneMenuScreen extends Screen {
         this.safeAdd(Button.builder(Component.literal("Go to surface"), b -> runCommand("surface"))
                 .bounds(left + 255, top - 1, 90, 20).build());
 
+        // walk to the nearest block of a kind (goto <block>, doesn't mine it) — issue #3
+        this.safeAdd(Button.builder(Component.literal("Go to a block..."), b -> openPicker(7))
+                .bounds(left, top + 26, 145, 20).build());
+
+        // elytra flight to the typed coordinates (nether only, needs the native pathfinder)
+        boolean elytraLoaded = baritone().getElytraProcess().isLoaded();
+        boolean inNether = this.minecraft != null && this.minecraft.level != null
+                && this.minecraft.level.dimension() == Level.NETHER;
+        Button fly = Button.builder(Component.literal("Fly there (Elytra)"), b -> {
+            String xs = gotoX.trim(), ys = gotoY.trim(), zs = gotoZ.trim();
+            if (xs.isEmpty() || zs.isEmpty()) {
+                statusMessage = "Enter at least X and Z";
+                return;
+            }
+            if (!xs.matches("-?\\d+") || !zs.matches("-?\\d+") || (!ys.isEmpty() && !ys.matches("-?\\d+"))) {
+                statusMessage = "Coordinates must be whole numbers";
+                return;
+            }
+            Goal goal = ys.isEmpty()
+                    ? new GoalXZ(Integer.parseInt(xs), Integer.parseInt(zs))
+                    : new GoalBlock(Integer.parseInt(xs), Integer.parseInt(ys), Integer.parseInt(zs));
+            baritone().getCustomGoalProcess().setGoal(goal);
+            runCommand("elytra");
+        }).bounds(left + 150, top + 26, 145, 20).build();
+        fly.active = elytraLoaded && inNether;
+        fly.setTooltip(Tooltip.create(Component.literal(
+                !elytraLoaded ? "Elytra flight isn't available: the native pathfinder didn't load on this system"
+                        : !inNether ? "Baritone elytra flight only works in the Nether"
+                        : "Fly to these coordinates with your equipped elytra + firework rockets")));
+        this.safeAdd(fly);
+
         // waypoints
-        EditBox name = new EditBox(this.font, left, top + 34, 140, 18, Component.literal("waypoint name"));
+        EditBox name = new EditBox(this.font, left, top + 60, 140, 18, Component.literal("waypoint name"));
         name.setHint(Component.literal("New waypoint name..."));
         name.setValue(waypointName);
         name.setResponder(s -> waypointName = s);
@@ -522,13 +565,13 @@ public class BaritoneMenuScreen extends Screen {
             waypoints.addWaypoint(new Waypoint(n, IWaypoint.Tag.USER, baritone().getPlayerContext().playerFeet()));
             waypointName = "";
             this.rebuildWidgets();
-        }).bounds(left + 145, top + 33, 70, 20).build());
+        }).bounds(left + 145, top + 59, 70, 20).build());
 
         IWaypointCollection waypoints = waypoints();
         if (waypoints != null) {
             List<IWaypoint> all = new ArrayList<>(waypoints.getAllWaypoints());
             all.sort(Comparator.comparing(IWaypoint::getName));
-            int rowY = top + 60;
+            int rowY = top + 86;
             for (IWaypoint wp : all) {
                 if (rowY > this.height - 56) {
                     break;
@@ -548,6 +591,37 @@ public class BaritoneMenuScreen extends Screen {
                 rowY += 21;
             }
         }
+    }
+
+    /**
+     * Picker sub-view for "walk to the nearest such block" (issue #3). Runs
+     * {@code goto <block>}, which paths to the block without mining it.
+     */
+    private void initGotoBlockPicker() {
+        int left = contentLeft();
+        int top = contentTop();
+
+        EditBox search = new EditBox(this.font, left, top, 190, 18, Component.literal("search"));
+        search.setHint(Component.literal("Search a block to walk to..."));
+        search.setValue(pickerSearch);
+        search.setResponder(s -> {
+            pickerSearch = s;
+            this.rebuildWidgets();
+        });
+        this.safeAdd(search);
+        this.activeSearchBox = search;
+
+        this.safeAdd(Button.builder(Component.literal("Cancel"), b -> {
+            blockPickTarget = 0;
+            this.rebuildWidgets();
+        }).bounds(left + 210, top - 1, 60, 20).build());
+
+        addBlockGrid(pickerSearch, GOTO_PICKS, top + 28, block -> {
+            String path = BuiltInRegistries.BLOCK.getKey(block).getPath();
+            blockPickTarget = 0;
+            pickerSearch = "";
+            runCommand("goto " + path);
+        });
     }
 
     private EditBox coordBox(int x, int y, String hint, String value, java.util.function.Consumer<String> responder) {

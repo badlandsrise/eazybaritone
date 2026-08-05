@@ -15,6 +15,7 @@ Everything here is licensed under **LGPL v3**, same as upstream — see [Credits
 - **Input macros** — auto-click or hold left/right mouse on a timer, straight from the menu; they stand down automatically while Baritone is pathing.
 - **Searchable settings editor** — browse and edit all of Baritone's settings from the menu, with plain-English labels on the common ones.
 - **Printer placement (opt-in)** — a Litematica-style placer that puts any block within reach in the correct orientation without needing a precise stance or line of sight, so stairs, slabs, and observers/pistons build effortlessly and face the right way. It lives in a clearly-marked **Danger** tab and is **off by default** — it's bannable on anti-cheat servers.
+- **Scrollable menu** — every tab scrolls with the mouse wheel, so long lists (waypoints, saved schematics, macros) stay reachable at any GUI scale. Contributed by [tumo07](https://github.com/tumo07), along with a fix for the client hanging on exit.
 
 Everything the base mod does is still available through normal chat commands (see [Under the hood](#under-the-hood)); the GUI just wraps the common jobs.
 
@@ -23,7 +24,7 @@ Everything the base mod does is still available through normal chat commands (se
 Open it with **B**. Tabs:
 
 - **Mine** — search a block, pick it, and it starts mining. Optional amount to stop at.
-- **Go to** — type coordinates and go; save and travel to waypoints.
+- **Go to** — type coordinates and go; save and travel to waypoints. **Go to a block...** walks to the nearest block of a kind without mining it (a chest, a spawner, diamond ore...). In the Nether, **Fly there (Elytra)** takes the typed coordinates and flies to them with your equipped elytra and firework rockets — Baritone's long-distance elytra autopilot, straight from the menu.
 - **Follow** — follow the nearest player/entity.
 - **Farm** — auto-farm within a radius.
 - **Area** — set two corners (or use the wand), then **clear** the region or fill it: solid, walls, shell, sphere, hollow sphere, cylinder, hollow cylinder, or **replace** one block with another. Fill block is chosen from an icon picker, and **Move** buttons nudge the whole selection a block at a time on any axis. Clears dig out top-to-bottom and fills build bottom-to-top, so the job looks tidy in progress.
