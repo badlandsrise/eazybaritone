@@ -33,6 +33,11 @@ import java.util.Arrays;
 /**
  * Registers Baritone's menu keybind so it shows up in Options -> Controls
  * and is rebindable like any vanilla key.
+ * <p>
+ * The registration must happen BEFORE the constructor's trailing {@code load()}
+ * call: load() parses options.txt against the keyMappings array, so a key added
+ * after it never gets its saved binding applied and resets to the default every
+ * launch (issue #5).
  */
 @Mixin(Options.class)
 public class MixinOptions {
@@ -44,7 +49,7 @@ public class MixinOptions {
 
     @Inject(
             method = "<init>",
-            at = @At("RETURN")
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Options;load()V")
     )
     private void baritone$registerKeybind(CallbackInfo ci) {
         KeyMapping[] extended = Arrays.copyOf(this.keyMappings, this.keyMappings.length + 1);
