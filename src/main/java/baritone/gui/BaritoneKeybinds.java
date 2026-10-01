@@ -19,14 +19,12 @@ package baritone.gui;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
-import org.lwjgl.glfw.GLFW;
 
 public final class BaritoneKeybinds {
 
     public static final KeyMapping OPEN_MENU = new KeyMapping(
             "key.baritone.openMenu",
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_B,
+            InputConstants.KEY_B,
             KeyMapping.Category.MISC
     );
 

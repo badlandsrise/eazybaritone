@@ -4,7 +4,7 @@
   "version": "${version}",
 
   "name": "EazyBaritone",
-  "description": "Baritone for Minecraft 26.2 with a built-in GUI. A fork of cabaletta/baritone.",
+  "description": "Baritone for Minecraft 26.3 with a built-in GUI. A fork of cabaletta/baritone.",
   "authors": [
     "leijurv", "Brady", "badlandsrise"
   ],
@@ -24,7 +24,7 @@
       "mixins.baritone.json"
   ],
   "depends": {
-    "fabricloader": ">=0.14.22",
-    "minecraft": ["26.2"]
+    "fabricloader": ">=0.19.5",
+    "minecraft": ["26.3"]
   }
 }
