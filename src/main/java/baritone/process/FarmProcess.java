@@ -47,6 +47,7 @@ import net.minecraft.world.level.block.BambooStalkBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.BonemealableBlock;
+import net.minecraft.world.level.block.BonemealSource;
 import net.minecraft.world.level.block.CactusBlock;
 import net.minecraft.world.level.block.CocoaBlock;
 import net.minecraft.world.level.block.CropBlock;
@@ -267,7 +268,7 @@ public final class FarmProcess extends BaritoneProcessHelper implements IFarmPro
             }
             if (state.getBlock() instanceof BonemealableBlock) {
                 BonemealableBlock ig = (BonemealableBlock) state.getBlock();
-                if (ig.isValidBonemealTarget(ctx.world(), pos, state) && ig.isBonemealSuccess(ctx.world(), ctx.world().getRandom(), pos, state)) {
+                if (ig.isValidBonemealTarget(ctx.world(), pos, state, BonemealSource.INTERACTION) && ig.isBonemealSuccess(ctx.world(), ctx.world().getRandom(), pos, state, BonemealSource.INTERACTION)) {
                     bonemealable.add(pos);
                 }
             }

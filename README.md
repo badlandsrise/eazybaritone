@@ -1,6 +1,6 @@
 # EazyBaritone
 
-A fork of [Baritone](https://github.com/cabaletta/baritone) updated to run on **Minecraft 26.2**, with an in-game menu bolted on so you don't have to memorize chat commands to use it. Named to distinguish it from the original — all the pathfinding is Baritone's; the GUI is the "eazy" part.
+A fork of [Baritone](https://github.com/cabaletta/baritone) updated to target **Minecraft 26.3**, with an in-game menu bolted on so you don't have to memorize chat commands to use it. Named to distinguish it from the original — all the pathfinding is Baritone's; the GUI is the "eazy" part.
 
 Baritone is the pathfinding and automation engine behind a lot of Minecraft tools — it can walk you to coordinates, mine ore, build schematics, farm, follow entities, and fill/clear regions. This fork keeps all of that intact and adds a point-and-click interface on top for people who don't want to live in the chat box.
 
@@ -8,7 +8,7 @@ Everything here is licensed under **LGPL v3**, same as upstream — see [Credits
 
 ## What this fork changes
 
-- **Runs on Minecraft 26.2** (Fabric). The original doesn't build for 26.2; this updates the toolchain, the ~250 changed API call sites, and the rendering to 26.2's gizmo pipeline.
+- **Targets Minecraft 26.3** (Fabric), with updated input, rendering, registry, and interaction APIs.
 - **In-game menu** — press **B** (rebindable in Controls) to open a full-screen menu. The game keeps running behind it.
 - **Selection wand** — hold a blaze rod (or any item you pick), left-click a block for corner 1, right-click for corner 2, with a live outline in the world.
 - **Visual copy/paste** — a "ghost" preview you place, nudge, rotate, and mirror before committing the build, so you always know where a paste will land. As of 2.4 the ghost shows **translucent versions of the actual blocks** (Litematica-style) instead of wireframes, so you can see exactly what will be built — and it melts away block-by-block as the build completes.
@@ -53,7 +53,7 @@ Schematic building, block substitutions, elytra flight, waypoints, and the full 
 
 ## Install
 
-1. Minecraft 26.2 with **Fabric Loader**.
+1. Minecraft 26.3 with **Fabric Loader 0.19.5 or newer**.
 2. Grab the latest `eazybaritone-<version>.jar` from the [**Releases**](https://github.com/badlandsrise/eazybaritone/releases) page and drop it in your `mods/` folder. (No Fabric API dependency.)
 3. Launch, load a world, press **B**.
 
@@ -75,7 +75,7 @@ The mod jar lands in `fabric/build/libs/`. For development you can run a test cl
 
 ## Credits
 
-This is a fork of **[Baritone](https://github.com/cabaletta/baritone)** by Leijurv, cabaletta, and its many contributors. All of the pathfinding, building, and automation is their work. This fork only adds the 26.2 port and the GUI/wand/clipboard layer on top.
+This is a fork of **[Baritone](https://github.com/cabaletta/baritone)** by Leijurv, cabaletta, and its many contributors. All of the pathfinding, building, and automation is their work. This fork only adds the Minecraft version port and the GUI/wand/clipboard layer on top.
 
 ## License
 

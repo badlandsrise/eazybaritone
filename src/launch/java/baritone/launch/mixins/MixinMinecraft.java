@@ -163,15 +163,15 @@ public class MixinMinecraft {
             method = "tick",
             at = @At(
                     value = "INVOKE",
-                    target = "net/minecraft/client/multiplayer/ClientLevel.tickEntities()V",
+                    target = "Lnet/minecraft/client/player/LocalPlayer;sendChanges()V",
                     shift = At.Shift.AFTER
             )
     )
     private void postUpdateEntities(CallbackInfo ci) {
         IBaritone baritone = BaritoneAPI.getProvider().getBaritoneForPlayer(this.player);
         if (baritone != null) {
-            // Intentionally call this after all entities have been updated. That way, any modification to rotations
-            // can be recognized by other entity code. (Fireworks and Pigs, for example)
+            // Restore rotations after the player update has been sent to the server.
+            // Resetting after tickEntities() would restore them before sendChanges().
             baritone.getGameEventHandler().onPlayerUpdate(new PlayerUpdateEvent(EventState.POST));
         }
     }
